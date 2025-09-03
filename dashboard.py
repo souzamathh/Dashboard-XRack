@@ -641,12 +641,11 @@ with tab1:
     else:
         st.info("Nenhum dado encontrado para o período selecionado.")
 
-    
 
 with tab2:
     st.subheader("Desempenho de Vendas por SKU")
     
-    # Novo filtro de pesquisa para SKUs e Descrição
+    # Filtro de pesquisa para SKUs e Descrição (que será usado para tudo)
     col_search1, col_search2, col_select = st.columns([1, 1, 2])
 
     with col_search1:
@@ -703,11 +702,37 @@ with tab2:
         # Extrair apenas os SKUs das opções selecionadas
         selected_skus = [option.split(" - ")[0] for option in selected_sku_options]
 
-    # Filtrar dados pelos SKUs selecionados
+    # Filtrar dados pelos SKUs selecionados OU pelos filtros de busca
     if selected_skus:
         filtered_sku_df = filtered_df[filtered_df['SKU'].astype(str).isin(selected_skus)]
     else:
-        filtered_sku_df = filtered_df
+        # Se não há SKUs selecionados, usar o filtro de busca
+        filtered_sku_df = filtered_df[filtered_df['SKU'].astype(str).isin(available_skus)]
+
+    # NOVO: Painel de Resultado Geral dos SKUs selecionados/filtrados
+    if not filtered_sku_df.empty:
+        st.markdown("---")
+        st.subheader("Resumo Geral")
+        
+        # Calcular métricas gerais
+        total_faturamento_skus = filtered_sku_df['Faturamento'].sum()
+        total_vendas_skus = filtered_sku_df.shape[0]  # Total de linhas/vendas
+        total_margem_skus = filtered_sku_df['Margem Contrib. (=)'].sum()
+        margem_perc_skus = (total_margem_skus / total_faturamento_skus * 100) if total_faturamento_skus > 0 else 0
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Faturamento Total", f"R$ {total_faturamento_skus:,.2f}")
+        
+        with col2:
+            st.metric("Total de Vendas", f"{total_vendas_skus:,}")
+        
+        with col3:
+            st.metric("Margem Contrib. (R$)", f"R$ {total_margem_skus:,.2f}")
+        
+        with col4:
+            st.metric("Margem Contrib. (%)", f"{margem_perc_skus:.1f}%")
 
     st.markdown("---")
     
@@ -721,7 +746,7 @@ with tab2:
         sku_desc_map = filtered_sku_df.groupby('SKU')['Descrição do Produto'].first().to_dict()
         filtered_sku_df_with_desc['SKU_Desc'] = filtered_sku_df_with_desc['SKU'].map(sku_desc_map)
 
-        if not filtered_sku_df.empty and selected_skus:
+        if not filtered_sku_df.empty and (selected_skus or search_term or desc_search_term):
             # SKUs por quantidade mensal
             
             sku_monthly_qty = filtered_sku_df_with_desc.groupby([filtered_sku_df_with_desc['Data'].dt.to_period('M'), 'SKU_Desc']).agg({
@@ -755,12 +780,12 @@ with tab2:
                 fig_sku_revenue.update_layout(height=600)
                 st.plotly_chart(fig_sku_revenue, use_container_width=True)
         else:
-            st.info("Selecione pelo menos um SKU para visualizar a evolução mensal.")  
+            st.info("Use os filtros acima para visualizar a evolução mensal dos SKUs.")  
         
         # NOVO: Gráficos de barras agrupadas por SKU
     st.markdown("---")
 
-    if not filtered_sku_df.empty and selected_skus:
+    if not filtered_sku_df.empty and (selected_skus or search_term or desc_search_term):
         # Preparar dados para gráficos agrupados
         monthly_comparison = filtered_sku_df.groupby([
             filtered_sku_df['Data'].dt.to_period('M'), 'SKU', 'Descrição do Produto'
@@ -923,30 +948,11 @@ with tab2:
             st.subheader("Margem de Contribuição por SKU")
             
         else:
-            st.info("Nenhum dado encontrado para o período selecionado.")
+            st.info("Use os filtros acima para visualizar gráficos detalhados.")
 
         if not filtered_df.empty:
-            # Filtro de pesquisa para a tabela
-            col_search_sku, col_search_desc = st.columns(2)
-
-            with col_search_sku:
-                table_sku_search = st.text_input("Buscar SKU:", key="table_sku_search")
-
-            with col_search_desc:
-                table_desc_search = st.text_input("Buscar Descrição:", key="table_desc_search")
-            
-            # Aplicar filtros de pesquisa na tabela
-            table_filtered_df = filtered_df.copy()
-
-            if table_sku_search:
-                table_filtered_df = table_filtered_df[
-                    table_filtered_df['SKU'].astype(str).str.contains(table_sku_search, case=False, na=False)
-                ]
-
-            if table_desc_search:
-                table_filtered_df = table_filtered_df[
-                    table_filtered_df['Descrição do Produto'].astype(str).str.contains(table_desc_search, case=False, na=False)
-                ]
+            # Aplicar os mesmos filtros da busca na tabela (removendo filtros duplicados)
+            table_filtered_df = filtered_sku_df.copy()  # Usar o mesmo filtro dos gráficos
             
             # Definir todas as colunas disponíveis na ordem correta
             all_columns = [
