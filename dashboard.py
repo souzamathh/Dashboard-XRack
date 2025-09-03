@@ -81,7 +81,7 @@ st.set_page_config(
 # Função para carregar dados
 @st.cache_data
 def load_data():
-    file_path = r"C:\Tecnologia\BI\Vendas\MercadoTurbo_Financeiro_01_07_2025_a_31_07_2025.xlsx"
+    file_path = r"MercadoTurbo_Financeiro_01_07_2025_a_31_07_2025.xlsx"
     
     try:
         # Tentar identificar automaticamente a linha de cabeçalho (primeira que contenha 'Data')
