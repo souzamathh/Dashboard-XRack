@@ -718,30 +718,40 @@ with tab2:
         total_faturamento_skus = filtered_sku_df['Faturamento'].sum()
         total_vendas_skus = filtered_sku_df.shape[0]  # Total de linhas/vendas
         total_margem_skus = filtered_sku_df['Margem Contrib. (=)'].sum()
+        total_quantidade_produtos = filtered_sku_df['Qtd.'].sum()  # NOVA MÉTRICA
         margem_perc_skus = (total_margem_skus / total_faturamento_skus * 100) if total_faturamento_skus > 0 else 0
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
         
         with col1:
-            st.metric("Faturamento Total", f"R$ {total_faturamento_skus:,.2f}")
+            st.metric("Faturamento", f"R$ {total_faturamento_skus:,.2f}")
         
         with col2:
-            st.metric("Total de Vendas", f"{total_vendas_skus:,}")
+            st.metric("Qtd. de Vendas", f"{total_vendas_skus:,}")
         
         with col3:
-            st.metric("Margem Contrib. (R$)", f"R$ {total_margem_skus:,.2f}")
+            st.metric("Qtd. de Produtos", f"{total_quantidade_produtos:,.0f}")
         
         with col4:
+            # Calcular preço médio: Faturamento Total / Quantidade Total
+            preco_medio = total_faturamento_skus / total_quantidade_produtos if total_quantidade_produtos > 0 else 0
+            st.metric("Ticket Médio", f"R$ {preco_medio:,.2f}")
+        
+        with col5:
+            st.metric("Margem Contrib. (R$)", f"R$ {total_margem_skus:,.2f}")
+        
+        with col6:
+            # Calcular margem média por unidade: Margem Total / Quantidade Total
+            margem_media_unitaria = total_margem_skus / total_quantidade_produtos if total_quantidade_produtos > 0 else 0
+            st.metric("Margem Contrib. (R$)/Un.", f"R$ {margem_media_unitaria:,.2f}")
+        
+        with col7:
             st.metric("Margem Contrib. (%)", f"{margem_perc_skus:.1f}%")
 
+        
     st.markdown("---")
     
-    # Resto do código continua normalmente...
     if not filtered_df.empty:
-        
-        # NOVO: Gráficos de SKUs por mês com filtro
-
-        # Adicionar descrição aos dados filtrados
         filtered_sku_df_with_desc = filtered_sku_df.copy()
         sku_desc_map = filtered_sku_df.groupby('SKU')['Descrição do Produto'].first().to_dict()
         filtered_sku_df_with_desc['SKU_Desc'] = filtered_sku_df_with_desc['SKU'].map(sku_desc_map)
