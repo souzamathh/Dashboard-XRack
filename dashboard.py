@@ -271,200 +271,215 @@ previous_df = get_previous_period_data(df, filtered_df, period_type)
 # Métricas principais
 st.header("📈 Visão Geral")
 
-col1, col2, col3, col4 = st.columns(4)
+# Calcular métricas considerando faturamento bruto e cancelamentos
+total_bruto = filtered_df['Faturamento'].sum()
+cancelados_df = filtered_df[filtered_df['Status Pedido'] == 'Cancelado']
+aprovados_df = filtered_df[filtered_df['Status Pedido'] != 'Cancelado']
+
+total_cancelado = cancelados_df['Faturamento'].sum()
+total_aprovado = aprovados_df['Faturamento'].sum()
+qtd_total_vendas = len(filtered_df)
+qtd_cancelados = len(cancelados_df)
+qtd_aprovados = len(aprovados_df)
+perc_cancelado_fat = (total_cancelado / total_bruto * 100) if total_bruto > 0 else 0
+perc_cancelado_qtd = (qtd_cancelados / qtd_total_vendas * 100) if qtd_total_vendas > 0 else 0
+
+# Período anterior
+prev_bruto = previous_df['Faturamento'].sum() if not previous_df.empty else 0
+prev_cancelados_df = previous_df[previous_df['Status Pedido'] == 'Cancelado'] if not previous_df.empty else pd.DataFrame()
+prev_cancelado = prev_cancelados_df['Faturamento'].sum() if not prev_cancelados_df.empty else 0
+prev_qtd_total = len(previous_df) if not previous_df.empty else 0
+prev_qtd_cancelados = len(prev_cancelados_df) if not prev_cancelados_df.empty else 0
+prev_perc_cancelado_fat = (prev_cancelado / prev_bruto * 100) if prev_bruto > 0 else 0
+prev_perc_cancelado_qtd = (prev_qtd_cancelados / prev_qtd_total * 100) if prev_qtd_total > 0 else 0
+
+# Primeira linha - Faturamento
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
-    # Corrigido: contar registros únicos de vendas
-    total_vendas = filtered_df.shape[0]  # Número total de linhas/registros
-    prev_vendas = previous_df.shape[0] if not previous_df.empty else 0
-    growth_vendas = ((total_vendas - prev_vendas) / prev_vendas * 100) if prev_vendas > 0 else 0
-    st.metric("Total de Vendas", f"{total_vendas:,}", f"{growth_vendas:+.1f}%")
+    growth_bruto = ((total_bruto - prev_bruto) / prev_bruto * 100) if prev_bruto > 0 else 0
+    st.metric("Faturamento Bruto", f"R$ {total_bruto:,.2f}", f"{growth_bruto:+.1f}%")
 
 with col2:
-    # Corrigido: somar faturamento total
-    total_faturamento = filtered_df['Faturamento'].sum()
-    prev_faturamento = previous_df['Faturamento'].sum() if not previous_df.empty else 0
-    growth_faturamento = ((total_faturamento - prev_faturamento) / prev_faturamento * 100) if prev_faturamento > 0 else 0
-    st.metric("Faturamento", f"R$ {total_faturamento:,.2f}", f"{growth_faturamento:+.1f}%")
+    growth_cancelado = ((total_cancelado - prev_cancelado) / prev_cancelado * 100) if prev_cancelado > 0 else 0
+    st.metric("Cancelados (R$)", f"R$ {total_cancelado:,.2f}", f"{growth_cancelado:+.1f}%")
 
 with col3:
-    # Corrigido: somar margem de contribuição
-    total_margem = filtered_df['Margem Contrib. (=)'].sum()
-    prev_margem = previous_df['Margem Contrib. (=)'].sum() if not previous_df.empty else 0
-    growth_margem = ((total_margem - prev_margem) / prev_margem * 100) if prev_margem > 0 else 0
-    st.metric("MC (R$)", f"R$ {total_margem:,.2f}", f"{growth_margem:+.1f}%")
+    growth_perc_cancelado = perc_cancelado_fat - prev_perc_cancelado_fat
+    st.metric("Cancelados (%)", f"{perc_cancelado_fat:.1f}%", f"{growth_perc_cancelado:+.1f}%")
 
 with col4:
-    # CORRIGIDO: calcular MC% = (Margem Total / Faturamento Total) * 100
-    avg_margem_perc = (total_margem / total_faturamento * 100) if total_faturamento > 0 else 0
-    
-    # Período anterior - mesmo cálculo
-    prev_faturamento_total = previous_df['Faturamento'].sum() if not previous_df.empty else 0
-    prev_margem_total = previous_df['Margem Contrib. (=)'].sum() if not previous_df.empty else 0
-    prev_avg_margem = (prev_margem_total / prev_faturamento_total * 100) if prev_faturamento_total > 0 else 0
-    
-    growth_avg_margem = avg_margem_perc - prev_avg_margem
-    st.metric("MC (%)", f"{avg_margem_perc:.1f}%", f"{growth_avg_margem:+.1f}%")
+    growth_aprovado = ((total_aprovado - (prev_bruto - prev_cancelado)) / (prev_bruto - prev_cancelado) * 100) if (prev_bruto - prev_cancelado) > 0 else 0
+    st.metric("MC (R$)", f"R$ {total_aprovado:,.2f}", f"{growth_aprovado:+.1f}%")
 
-st.markdown("---")
+with col5:
+    total_margem = aprovados_df['Margem Contrib. (=)'].sum()
+    prev_margem = previous_df[previous_df['Status Pedido'] != 'Cancelado']['Margem Contrib. (=)'].sum() if not previous_df.empty else 0
+    growth_margem = ((total_margem - prev_margem) / prev_margem * 100) if prev_margem > 0 else 0
+    avg_margem_perc = (total_margem / total_aprovado * 100) if total_aprovado > 0 else 0
+    st.metric("MC (%)", f"{avg_margem_perc:.1f}%", f"{growth_margem:+.1f}%")
+
+
+
+# Segunda linha - Quantidade de Vendas
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    growth_qtd_total = ((qtd_total_vendas - prev_qtd_total) / prev_qtd_total * 100) if prev_qtd_total > 0 else 0
+    st.metric("Total de Vendas (qtd.)", f"{qtd_total_vendas:,}", f"{growth_qtd_total:+.1f}%")
+
+with col2:
+    growth_qtd_aprovado = ((qtd_aprovados - (prev_qtd_total - prev_qtd_cancelados)) / (prev_qtd_total - prev_qtd_cancelados) * 100) if (prev_qtd_total - prev_qtd_cancelados) > 0 else 0
+    st.metric("Vendas Aprovadas (qtd.)", f"{qtd_aprovados:,}", f"{growth_qtd_aprovado:+.1f}%")
+
+with col3:
+    growth_qtd_cancelado = ((qtd_cancelados - prev_qtd_cancelados) / prev_qtd_cancelados * 100) if prev_qtd_cancelados > 0 else 0
+    st.metric("Vendas Canceladas (qtd.)", f"{qtd_cancelados:,}", f"{growth_qtd_cancelado:+.1f}%")
+
+with col4:
+    growth_perc_qtd_cancelado = perc_cancelado_qtd - prev_perc_cancelado_qtd
+    st.metric("Cancelados (%)", f"{perc_cancelado_qtd:.1f}%", f"{growth_perc_qtd_cancelado:+.1f}%")
+
+with col5:
+    ticket_medio = total_aprovado / qtd_aprovados if qtd_aprovados > 0 else 0
+    prev_ticket_medio = (prev_bruto - prev_cancelado) / (prev_qtd_total - prev_qtd_cancelados) if (prev_qtd_total - prev_qtd_cancelados) > 0 else 0
+    growth_ticket = ((ticket_medio - prev_ticket_medio) / prev_ticket_medio * 100) if prev_ticket_medio > 0 else 0
+    st.metric("Ticket Médio (MC)", f"R$ {ticket_medio:.2f}", f"{growth_ticket:+.1f}%")
 
 # Métricas adicionais por Canal e Conta
 st.subheader("Por Canal e Conta")
 
 if not filtered_df.empty:
-    # Resumo por canal - PERÍODO ATUAL
-    resumo_canal = filtered_df.groupby('Canal de Venda').agg({
-        'Faturamento': 'sum',
-        'Qtd.': 'sum',
-        'Margem Contrib. (=)': 'sum'
-    })
+    def calculate_channel_metrics(df, prev_df=None):
+        """Calcula métricas por canal considerando cancelamentos"""
+        result = {}
     
-    # Resumo por conta e canal - PERÍODO ATUAL
-    resumo_conta_canal = filtered_df.groupby(['Canal de Venda', 'Conta']).agg({
-        'Faturamento': 'sum',
-        'Qtd.': 'sum',
-        'Margem Contrib. (=)': 'sum'
-    })
-    
-    # Resumo por canal - PERÍODO ANTERIOR
-    resumo_canal_prev = pd.DataFrame()
-    resumo_conta_canal_prev = pd.DataFrame()
-    
-    if not previous_df.empty:
-        resumo_canal_prev = previous_df.groupby('Canal de Venda').agg({
-            'Faturamento': 'sum',
-            'Qtd.': 'sum',
-            'Margem Contrib. (=)': 'sum'
-        })
+        for canal in ['Mercado Livre', 'Shopee']:
+            canal_df = df[df['Canal de Venda'] == canal]
         
-        resumo_conta_canal_prev = previous_df.groupby(['Canal de Venda', 'Conta']).agg({
-            'Faturamento': 'sum',
-            'Qtd.': 'sum',
-            'Margem Contrib. (=)': 'sum'
-        })
+            # Faturamento
+            bruto = canal_df['Faturamento'].sum()
+            cancelado = canal_df[canal_df['Status Pedido'] == 'Cancelado']['Faturamento'].sum()
+            aprovado = bruto - cancelado
+            perc_cancelado_fat = (cancelado / bruto * 100) if bruto > 0 else 0
+        
+            # Quantidade
+            qtd_total = len(canal_df)
+            qtd_cancelada = len(canal_df[canal_df['Status Pedido'] == 'Cancelado'])
+            qtd_aprovada = qtd_total - qtd_cancelada
+            perc_cancelado_qtd = (qtd_cancelada / qtd_total * 100) if qtd_total > 0 else 0
+        
+            # Período anterior
+            prev_bruto = prev_aprovado = prev_qtd_aprovada = 0
+            if prev_df is not None and not prev_df.empty:
+                prev_canal_df = prev_df[prev_df['Canal de Venda'] == canal]
+                prev_bruto = prev_canal_df['Faturamento'].sum()
+                prev_cancelado = prev_canal_df[prev_canal_df['Status Pedido'] == 'Cancelado']['Faturamento'].sum()
+                prev_aprovado = prev_bruto - prev_cancelado
+                prev_qtd_total = len(prev_canal_df)
+                prev_qtd_cancelada = len(prev_canal_df[prev_canal_df['Status Pedido'] == 'Cancelado'])
+                prev_qtd_aprovada = prev_qtd_total - prev_qtd_cancelada
+            
+            growth_fat = ((aprovado - prev_aprovado) / prev_aprovado * 100) if prev_aprovado > 0 else 0
+            growth_qtd = ((qtd_aprovada - prev_qtd_aprovada) / prev_qtd_aprovada * 100) if prev_qtd_aprovada > 0 else 0
+            
+            result[canal] = {
+                'bruto': bruto,
+                'cancelado': cancelado,
+                'aprovado': aprovado,
+                'perc_cancelado_fat': perc_cancelado_fat,
+                'qtd_total': qtd_total,
+                'qtd_cancelada': qtd_cancelada,
+                'qtd_aprovada': qtd_aprovada,
+                'perc_cancelado_qtd': perc_cancelado_qtd,
+                'growth_fat': growth_fat,
+                'growth_qtd': growth_qtd
+            }
+            
+            # Por conta
+            for conta in ['XRack', 'EvolutionX']:
+                conta_df = canal_df[canal_df['Conta'] == conta]
+                
+                # Faturamento
+                conta_bruto = conta_df['Faturamento'].sum()
+                conta_cancelado = conta_df[conta_df['Status Pedido'] == 'Cancelado']['Faturamento'].sum()
+                conta_aprovado = conta_bruto - conta_cancelado
+                conta_perc_cancelado_fat = (conta_cancelado / conta_bruto * 100) if conta_bruto > 0 else 0
+                
+                # Quantidade
+                conta_qtd_total = len(conta_df)
+                conta_qtd_cancelada = len(conta_df[conta_df['Status Pedido'] == 'Cancelado'])
+                conta_qtd_aprovada = conta_qtd_total - conta_qtd_cancelada
+                conta_perc_cancelado_qtd = (conta_qtd_cancelada / conta_qtd_total * 100) if conta_qtd_total > 0 else 0
+                
+                # Margem para contas aprovadas
+                conta_margem = conta_df[conta_df['Status Pedido'] != 'Cancelado']['Margem Contrib. (=)'].sum()
+                conta_mc_perc = (conta_margem / conta_aprovado * 100) if conta_aprovado > 0 else 0
+                
+                result[f'{canal}_{conta}'] = {
+                    'bruto': conta_bruto,
+                    'cancelado': conta_cancelado,
+                    'aprovado': conta_aprovado,
+                    'perc_cancelado_fat': conta_perc_cancelado_fat,
+                    'qtd_total': conta_qtd_total,
+                    'qtd_cancelada': conta_qtd_cancelada,
+                    'qtd_aprovada': conta_qtd_aprovada,
+                    'perc_cancelado_qtd': conta_perc_cancelado_qtd,
+                    'margem': conta_margem,
+                    'mc_perc': conta_mc_perc
+                }
+        
+        return result
+    
+    metrics = calculate_channel_metrics(filtered_df, previous_df)
     
     # Primeira linha - Totais por Canal
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        ml_fat = resumo_canal.loc['Mercado Livre', 'Faturamento'] if 'Mercado Livre' in resumo_canal.index else 0
-        ml_qtd = resumo_canal.loc['Mercado Livre', 'Qtd.'] if 'Mercado Livre' in resumo_canal.index else 0
-        ml_margem = resumo_canal.loc['Mercado Livre', 'Margem Contrib. (=)'] if 'Mercado Livre' in resumo_canal.index else 0
-        
-        # Calcular MC% corretamente
-        ml_mc_perc = (ml_margem / ml_fat * 100) if ml_fat > 0 else 0
-        
-        # Período anterior - Mercado Livre
-        ml_fat_prev = resumo_canal_prev.loc['Mercado Livre', 'Faturamento'] if not resumo_canal_prev.empty and 'Mercado Livre' in resumo_canal_prev.index else 0
-        ml_growth = ((ml_fat - ml_fat_prev) / ml_fat_prev * 100) if ml_fat_prev > 0 else 0
-        
-        st.metric("🟡 Mercado Livre", f"R$ {ml_fat:,.2f}", f"{ml_growth:+.1f}%")
-        st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_margem:,.2f} <strong>({ml_mc_perc:.1f}%)</strong></div>', unsafe_allow_html=True)
-    
-    with col2:
-        shopee_fat = resumo_canal.loc['Shopee', 'Faturamento'] if 'Shopee' in resumo_canal.index else 0
-        shopee_qtd = resumo_canal.loc['Shopee', 'Qtd.'] if 'Shopee' in resumo_canal.index else 0
-        shopee_margem = resumo_canal.loc['Shopee', 'Margem Contrib. (=)'] if 'Shopee' in resumo_canal.index else 0
-        
-        # Calcular MC% corretamente
-        shopee_mc_perc = (shopee_margem / shopee_fat * 100) if shopee_fat > 0 else 0
-        
-        # Período anterior - Shopee
-        shopee_fat_prev = resumo_canal_prev.loc['Shopee', 'Faturamento'] if not resumo_canal_prev.empty and 'Shopee' in resumo_canal_prev.index else 0
-        shopee_growth = ((shopee_fat - shopee_fat_prev) / shopee_fat_prev * 100) if shopee_fat_prev > 0 else 0
-        
-        st.metric("🔴 Shopee", f"R$ {shopee_fat:,.2f}", f"{shopee_growth:+.1f}%")
-        st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {shopee_margem:,.2f} <strong>({shopee_mc_perc:.1f}%)</strong></div>', unsafe_allow_html=True)
-    
-    # Linhas seguintes - Por Conta e Canal
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        try:
-            ml_xr_fat = resumo_conta_canal.loc[('Mercado Livre', 'XRack'), 'Faturamento']
-            ml_xr_qtd = resumo_conta_canal.loc[('Mercado Livre', 'XRack'), 'Qtd.']
-            ml_xr_margem = resumo_conta_canal.loc[('Mercado Livre', 'XRack'), 'Margem Contrib. (=)']
-            
-            # Calcular MC% corretamente
-            ml_xr_mc_perc = (ml_xr_margem / ml_xr_fat * 100) if ml_xr_fat > 0 else 0
-            
-            # Período anterior - ML XRack
-            ml_xr_fat_prev = 0
-            if not resumo_conta_canal_prev.empty and ('Mercado Livre', 'XRack') in resumo_conta_canal_prev.index:
-                ml_xr_fat_prev = resumo_conta_canal_prev.loc[('Mercado Livre', 'XRack'), 'Faturamento']
-            ml_xr_growth = ((ml_xr_fat - ml_xr_fat_prev) / ml_xr_fat_prev * 100) if ml_xr_fat_prev > 0 else 0
-            
-            st.metric("🟡 XRack", f"R$ {ml_xr_fat:,.2f}", f"{ml_xr_growth:+.1f}%")
-            st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_xr_margem:,.2f} <strong>({ml_xr_mc_perc:.1f}%)</strong></div>', unsafe_allow_html=True)
-        except KeyError:
-            st.metric("🟡 XRack", "R$ 0,00", "0.0%")
-            st.markdown('<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ 0,00 <strong>(0.0%)</strong></div>', unsafe_allow_html=True)
-    
-    with col2:
-        try:
-            ml_ev_fat = resumo_conta_canal.loc[('Mercado Livre', 'EvolutionX'), 'Faturamento']
-            ml_ev_qtd = resumo_conta_canal.loc[('Mercado Livre', 'EvolutionX'), 'Qtd.']
-            ml_ev_margem = resumo_conta_canal.loc[('Mercado Livre', 'EvolutionX'), 'Margem Contrib. (=)']
-            
-            # Calcular MC% corretamente
-            ml_ev_mc_perc = (ml_ev_margem / ml_ev_fat * 100) if ml_ev_fat > 0 else 0
-            
-            # Período anterior - ML EvolutionX
-            ml_ev_fat_prev = 0
-            if not resumo_conta_canal_prev.empty and ('Mercado Livre', 'EvolutionX') in resumo_conta_canal_prev.index:
-                ml_ev_fat_prev = resumo_conta_canal_prev.loc[('Mercado Livre', 'EvolutionX'), 'Faturamento']
-            ml_ev_growth = ((ml_ev_fat - ml_ev_fat_prev) / ml_ev_fat_prev * 100) if ml_ev_fat_prev > 0 else 0
-            
-            st.metric("🟡 EvolutionX", f"R$ {ml_ev_fat:,.2f}", f"{ml_ev_growth:+.1f}%")
-            st.markdown(f'<div style="margin-top: -10px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_ev_margem:,.2f} <strong>({ml_ev_mc_perc:.1f}%)</strong></div>', unsafe_allow_html=True)
-        except KeyError:
-            st.metric("🟡 EvolutionX", "R$ 0,00", "0.0%")
-            st.markdown('<div style="margin-top: -10px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ 0,00 <strong>(0.0%)</strong></div>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        try:
-            sh_xr_fat = resumo_conta_canal.loc[('Shopee', 'XRack'), 'Faturamento']
-            sh_xr_qtd = resumo_conta_canal.loc[('Shopee', 'XRack'), 'Qtd.']
-            sh_xr_margem = resumo_conta_canal.loc[('Shopee', 'XRack'), 'Margem Contrib. (=)']
-            
-            # Calcular MC% corretamente
-            sh_xr_mc_perc = (sh_xr_margem / sh_xr_fat * 100) if sh_xr_fat > 0 else 0
-            
-            # Período anterior - Shopee XRack
-            sh_xr_fat_prev = 0
-            if not resumo_conta_canal_prev.empty and ('Shopee', 'XRack') in resumo_conta_canal_prev.index:
-                sh_xr_fat_prev = resumo_conta_canal_prev.loc[('Shopee', 'XRack'), 'Faturamento']
-            sh_xr_growth = ((sh_xr_fat - sh_xr_fat_prev) / sh_xr_fat_prev * 100) if sh_xr_fat_prev > 0 else 0
-            
-            st.metric("🔴 XRack", f"R$ {sh_xr_fat:,.2f}", f"{sh_xr_growth:+.1f}%")
-            st.markdown(f'<div style="margin-top: -10px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {sh_xr_margem:,.2f} <strong>({sh_xr_mc_perc:.1f}%)</strong></div>', unsafe_allow_html=True)
-        except KeyError:
-            st.metric("🔴 XRack", "R$ 0,00", "0.0%")
-            st.markdown('<div style="margin-top: -10px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ 0,00 <strong>(0.0%)</strong></div>', unsafe_allow_html=True)
-    
-    with col2:
-        try:
-            sh_ev_fat = resumo_conta_canal.loc[('Shopee', 'EvolutionX'), 'Faturamento']
-            sh_ev_qtd = resumo_conta_canal.loc[('Shopee', 'EvolutionX'), 'Qtd.']
-            sh_ev_margem = resumo_conta_canal.loc[('Shopee', 'EvolutionX'), 'Margem Contrib. (=)']
-            
-            # Calcular MC% corretamente
-            sh_ev_mc_perc = (sh_ev_margem / sh_ev_fat * 100) if sh_ev_fat > 0 else 0
-            
-            # Período anterior - Shopee EvolutionX
-            sh_ev_fat_prev = 0
-            if not resumo_conta_canal_prev.empty and ('Shopee', 'EvolutionX') in resumo_conta_canal_prev.index:
-                sh_ev_fat_prev = resumo_conta_canal_prev.loc[('Shopee', 'EvolutionX'), 'Faturamento']
-            sh_ev_growth = ((sh_ev_fat - sh_ev_fat_prev) / sh_ev_fat_prev * 100) if sh_ev_fat_prev > 0 else 0
-            
-            st.metric("🔴 EvolutionX", f"R$ {sh_ev_fat:,.2f}", f"{sh_ev_growth:+.1f}%")
-            st.markdown(f'<div style="margin-top: -10px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {sh_ev_margem:,.2f} <strong>({sh_ev_mc_perc:.1f}%)</strong></div>', unsafe_allow_html=True)
-        except KeyError:
-            st.metric("🔴 EvolutionX", "R$ 0,00", "0.0%")
-            st.markdown('<div style="margin-top: -10px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ 0,00 <strong>(0.0%)</strong></div>', unsafe_allow_html=True)
+    # Primeira linha - Totais por Canal
+col1, col2 = st.columns(2)
 
+with col1:
+    ml_data = metrics['Mercado Livre']
+    st.metric("🟡 Mercado Livre (Fat.)", f"R$ {ml_data['aprovado']:,.2f}", f"{ml_data['growth_fat']:+.1f}%")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>Bruto:</strong> R$ {ml_data["bruto"]:,.2f} | <strong>Cancelado:</strong> R$ {ml_data["cancelado"]:,.2f} <strong>({ml_data["perc_cancelado_fat"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.metric("🟡 Mercado Livre (Qtd.)", f"{ml_data['qtd_aprovada']:,}", f"{ml_data['growth_qtd']:+.1f}%")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Total:</strong> {ml_data["qtd_total"]:,} | <strong>Canceladas:</strong> {ml_data["qtd_cancelada"]:,} <strong>({ml_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+
+with col2:
+    shopee_data = metrics['Shopee']
+    st.metric("🔴 Shopee (Fat.)", f"R$ {shopee_data['aprovado']:,.2f}", f"{shopee_data['growth_fat']:+.1f}%")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>Bruto:</strong> R$ {shopee_data["bruto"]:,.2f} | <strong>Cancelado:</strong> R$ {shopee_data["cancelado"]:,.2f} <strong>({shopee_data["perc_cancelado_fat"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.metric("🔴 Shopee (Qtd.)", f"{shopee_data['qtd_aprovada']:,}")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Total:</strong> {shopee_data["qtd_total"]:,} | <strong>Canceladas:</strong> {shopee_data["qtd_cancelada"]:,} <strong>({shopee_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+
+# Linhas seguintes - Por Conta e Canal
+col1, col2 = st.columns(2)
+
+with col1:
+    ml_xr_data = metrics['Mercado Livre_XRack']
+    st.metric("🟡 XRack", f"R$ {ml_xr_data['aprovado']:,.2f}")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_xr_data["margem"]:,.2f} <strong>({ml_xr_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {ml_xr_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {ml_xr_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {ml_xr_data["qtd_cancelada"]:,} <strong>({ml_xr_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+
+with col2:
+    ml_ev_data = metrics['Mercado Livre_EvolutionX']
+    st.metric("🟡 EvolutionX", f"R$ {ml_ev_data['aprovado']:,.2f}")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_ev_data["margem"]:,.2f} <strong>({ml_ev_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {ml_ev_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {ml_ev_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {ml_ev_data["qtd_cancelada"]:,} <strong>({ml_ev_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    sh_xr_data = metrics['Shopee_XRack']
+    st.metric("🔴 XRack", f"R$ {sh_xr_data['aprovado']:,.2f}")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {sh_xr_data["margem"]:,.2f} <strong>({sh_xr_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {sh_xr_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {sh_xr_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {sh_xr_data["qtd_cancelada"]:,} <strong>({sh_xr_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+
+with col2:
+    sh_ev_data = metrics['Shopee_EvolutionX']
+    st.metric("🔴 EvolutionX", f"R$ {sh_ev_data['aprovado']:,.2f}")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {sh_ev_data["margem"]:,.2f} <strong>({sh_ev_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {sh_ev_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {sh_ev_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {sh_ev_data["qtd_cancelada"]:,} <strong>({sh_ev_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    
 st.markdown("---")
 
 # Opção de visualização (Faturamento vs Margem)
@@ -479,48 +494,91 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.subheader("Vendas")
     
-    # Agrupar por mês - Corrigido
-    monthly_sales = filtered_df.groupby([filtered_df['Data'].dt.to_period('M')]).agg({
+    # Agrupar por mês considerando status
+monthly_sales = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'Status Pedido']).agg({
+    value_column: 'sum',
+    'ID da venda': 'count'
+}).reset_index()
+monthly_sales['Data_str'] = monthly_sales['Data'].astype(str)
+
+# Separar aprovados e cancelados
+monthly_aprovados = monthly_sales[monthly_sales['Status Pedido'] != 'Cancelado'].groupby('Data_str').agg({
+    value_column: 'sum',
+    'ID da venda': 'sum'
+}).reset_index()
+
+monthly_cancelados = monthly_sales[monthly_sales['Status Pedido'] == 'Cancelado'].groupby('Data_str').agg({
+    value_column: 'sum',
+    'ID da venda': 'sum'
+}).reset_index()
+
+if not monthly_sales.empty:
+    # Gráfico de vendas mensais com aprovados e cancelados
+    fig_monthly = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=[f'{view_option} Mensal', 'Quantidade de Vendas Mensais'],
+        vertical_spacing=0.1
+    )
+    
+    # Adicionar barras de aprovados
+    if not monthly_aprovados.empty:
+        fig_monthly.add_trace(
+            go.Bar(x=monthly_aprovados['Data_str'], y=monthly_aprovados[value_column], 
+                   name=f'{view_option} Aprovado', marker_color='#1f77b4'),
+            row=1, col=1
+        )
+    
+    # Adicionar barras de cancelados
+    if not monthly_cancelados.empty:
+        fig_monthly.add_trace(
+            go.Bar(x=monthly_cancelados['Data_str'], y=monthly_cancelados[value_column], 
+                   name=f'{view_option} Cancelado', marker_color='#ff0000'),
+            row=1, col=1
+        )
+    
+    # Quantidade - aprovados
+    if not monthly_aprovados.empty:
+        fig_monthly.add_trace(
+            go.Scatter(x=monthly_aprovados['Data_str'], y=monthly_aprovados['ID da venda'], 
+                      mode='lines+markers', name='Qtd. Aprovada', marker_color='#1f77b4'),
+            row=2, col=1
+        )
+    
+    # Quantidade - cancelados
+    if not monthly_cancelados.empty:
+        fig_monthly.add_trace(
+            go.Scatter(x=monthly_cancelados['Data_str'], y=monthly_cancelados['ID da venda'], 
+                      mode='lines+markers', name='Qtd. Cancelada', marker_color='#ff0000'),
+            row=2, col=1
+        )
+    
+    fig_monthly.update_layout(
+        height=700, 
+        showlegend=True,
+        margin=dict(t=60, b=60, l=60, r=60),
+        barmode='stack'
+    )
+    fig_monthly.update_yaxes(title_text="Valor (R$)", row=1, col=1)
+    fig_monthly.update_yaxes(title_text="Quantidade", row=2, col=1)
+    
+    st.plotly_chart(fig_monthly, use_container_width=True)
+    
+    # Tabela de vendas mensais com aprovados e cancelados
+    monthly_complete = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'Status Pedido']).agg({
         value_column: 'sum',
         'ID da venda': 'count'
     }).reset_index()
-    monthly_sales['Data_str'] = monthly_sales['Data'].astype(str)
+    monthly_complete['Mês'] = monthly_complete['Data'].astype(str)
     
-    if not monthly_sales.empty:
-        # Gráfico de vendas mensais
-        fig_monthly = make_subplots(
-            rows=2, cols=1,
-            subplot_titles=[f'{view_option} Mensal', 'Quantidade de Vendas Mensais'],
-            vertical_spacing=0.1
-        )
-        
-        fig_monthly.add_trace(
-            go.Bar(x=monthly_sales['Data_str'], y=monthly_sales[value_column], 
-                   name=view_option, marker_color='#1f77b4'),
-            row=1, col=1
-        )
-        
-        fig_monthly.add_trace(
-            go.Scatter(x=monthly_sales['Data_str'], y=monthly_sales['ID da venda'], 
-                      mode='lines+markers', name='Quantidade', marker_color='#ff7f0e'),
-            row=2, col=1
-        )
-        
-        fig_monthly.update_layout(
-            height=700, 
-            showlegend=True,
-            margin=dict(t=60, b=60, l=60, r=60)
-        )
-        fig_monthly.update_yaxes(title_text="Valor (R$)", row=1, col=1)
-        fig_monthly.update_yaxes(title_text="Quantidade", row=2, col=1)
-        
-        st.plotly_chart(fig_monthly, use_container_width=True)
-        
-        # Tabela de vendas mensais
-        display_monthly = monthly_sales.drop('Data', axis=1).rename(columns={'Data_str': 'Mês'})
-        st.dataframe(display_monthly.style.format({value_column: 'R$ {:,.2f}'}), use_container_width=True)
-    else:
-        st.info("Nenhum dado encontrado para o período selecionado.")
+    monthly_pivot = monthly_complete.pivot_table(
+        index='Mês',
+        columns='Status Pedido',
+        values=[value_column, 'ID da venda'],
+        fill_value=0,
+        aggfunc='sum'
+    )
+    
+    st.dataframe(monthly_pivot.style.format('{:,.2f}'), use_container_width=True)
 
     st.subheader("Pedidos")
     
@@ -528,16 +586,30 @@ with tab1:
         col1, col2 = st.columns(2)
         
         with col1:
-            # Status dos pedidos
-            if 'Status Pedido' in filtered_df.columns:
-                status_count = filtered_df['Status Pedido'].value_counts()
+            # Pedidos por canal com status
+            canal_status = filtered_df.groupby(['Canal de Venda', 'Status Pedido']).size().reset_index(name='Quantidade')
+
+            if not canal_status.empty:
+                # Criar labels combinados
+                canal_status['Label'] = canal_status['Canal de Venda'] + ' - ' + canal_status['Status Pedido']
                 
-                if not status_count.empty:
-                    fig_status = px.pie(
-                        values=status_count.values, names=status_count.index,
-                        title='Status dos Pedidos'
-                    )
-                    st.plotly_chart(fig_status, use_container_width=True)
+                # Definir cores
+                color_map = {}
+                for _, row in canal_status.iterrows():
+                    if row['Status Pedido'] == 'Cancelado':
+                        color_map[row['Label']] = '#ff0000'
+                    else:
+                        color_map[row['Label']] = '#1f77b4' if 'Mercado Livre' in row['Canal de Venda'] else '#ffa500'
+            
+            fig_canal = px.pie(
+                canal_status, 
+                values='Quantidade', 
+                names='Label',
+                title='Pedidos por Canal de Venda e Status',
+                color='Label',
+                color_discrete_map=color_map
+            )
+            st.plotly_chart(fig_canal, use_container_width=True)
         
         with col2:
             # Pedidos por canal
@@ -578,6 +650,7 @@ with tab1:
             st.plotly_chart(fig_daily, use_container_width=True)
         
         st.markdown("---")
+
         st.subheader("Diário por Conta e Canal")
         
         # Criar relatório diário por conta e canal
