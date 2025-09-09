@@ -495,240 +495,313 @@ with tab1:
     st.subheader("Vendas")
     
     # Agrupar por mês considerando status
-monthly_sales = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'Status Pedido']).agg({
-    value_column: 'sum',
-    'ID da venda': 'count'
-}).reset_index()
-monthly_sales['Data_str'] = monthly_sales['Data'].astype(str)
-
-# Separar aprovados e cancelados
-monthly_aprovados = monthly_sales[monthly_sales['Status Pedido'] != 'Cancelado'].groupby('Data_str').agg({
-    value_column: 'sum',
-    'ID da venda': 'sum'
-}).reset_index()
-
-monthly_cancelados = monthly_sales[monthly_sales['Status Pedido'] == 'Cancelado'].groupby('Data_str').agg({
-    value_column: 'sum',
-    'ID da venda': 'sum'
-}).reset_index()
-
-if not monthly_sales.empty:
-    # Gráfico de vendas mensais com aprovados e cancelados
-    fig_monthly = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=[f'{view_option} Mensal', 'Quantidade de Vendas Mensais'],
-        vertical_spacing=0.1
-    )
-    
-    # Adicionar barras de aprovados
-    if not monthly_aprovados.empty:
-        fig_monthly.add_trace(
-            go.Bar(x=monthly_aprovados['Data_str'], y=monthly_aprovados[value_column], 
-                   name=f'{view_option} Aprovado', marker_color='#1f77b4'),
-            row=1, col=1
-        )
-    
-    # Adicionar barras de cancelados
-    if not monthly_cancelados.empty:
-        fig_monthly.add_trace(
-            go.Bar(x=monthly_cancelados['Data_str'], y=monthly_cancelados[value_column], 
-                   name=f'{view_option} Cancelado', marker_color='#ff0000'),
-            row=1, col=1
-        )
-    
-    # Quantidade - aprovados
-    if not monthly_aprovados.empty:
-        fig_monthly.add_trace(
-            go.Scatter(x=monthly_aprovados['Data_str'], y=monthly_aprovados['ID da venda'], 
-                      mode='lines+markers', name='Qtd. Aprovada', marker_color='#1f77b4'),
-            row=2, col=1
-        )
-    
-    # Quantidade - cancelados
-    if not monthly_cancelados.empty:
-        fig_monthly.add_trace(
-            go.Scatter(x=monthly_cancelados['Data_str'], y=monthly_cancelados['ID da venda'], 
-                      mode='lines+markers', name='Qtd. Cancelada', marker_color='#ff0000'),
-            row=2, col=1
-        )
-    
-    fig_monthly.update_layout(
-        height=700, 
-        showlegend=True,
-        margin=dict(t=60, b=60, l=60, r=60),
-        barmode='stack'
-    )
-    fig_monthly.update_yaxes(title_text="Valor (R$)", row=1, col=1)
-    fig_monthly.update_yaxes(title_text="Quantidade", row=2, col=1)
-    
-    st.plotly_chart(fig_monthly, use_container_width=True)
-    
-    # Tabela de vendas mensais com aprovados e cancelados
-    monthly_complete = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'Status Pedido']).agg({
+    monthly_sales = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'Status Pedido']).agg({
         value_column: 'sum',
         'ID da venda': 'count'
     }).reset_index()
-    monthly_complete['Mês'] = monthly_complete['Data'].astype(str)
-    
-    monthly_pivot = monthly_complete.pivot_table(
-        index='Mês',
-        columns='Status Pedido',
-        values=[value_column, 'ID da venda'],
-        fill_value=0,
-        aggfunc='sum'
-    )
-    
-    st.dataframe(monthly_pivot.style.format('{:,.2f}'), use_container_width=True)
+    monthly_sales['Data_str'] = monthly_sales['Data'].astype(str)
 
-    st.subheader("Pedidos")
-    
-    if not filtered_df.empty:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Pedidos por canal com status
-            canal_status = filtered_df.groupby(['Canal de Venda', 'Status Pedido']).size().reset_index(name='Quantidade')
+    # Separar aprovados e cancelados
+    monthly_aprovados = monthly_sales[monthly_sales['Status Pedido'] != 'Cancelado'].groupby('Data_str').agg({
+        value_column: 'sum',
+        'ID da venda': 'sum'
+    }).reset_index()
 
-            if not canal_status.empty:
-                # Criar labels combinados
-                canal_status['Label'] = canal_status['Canal de Venda'] + ' - ' + canal_status['Status Pedido']
-                
-                # Definir cores
-                color_map = {}
-                for _, row in canal_status.iterrows():
-                    if row['Status Pedido'] == 'Cancelado':
-                        color_map[row['Label']] = '#ff0000'
-                    else:
-                        color_map[row['Label']] = '#1f77b4' if 'Mercado Livre' in row['Canal de Venda'] else '#ffa500'
-            
-            fig_canal = px.pie(
-                canal_status, 
-                values='Quantidade', 
-                names='Label',
-                title='Pedidos por Canal de Venda e Status',
-                color='Label',
-                color_discrete_map=color_map
-            )
-            st.plotly_chart(fig_canal, use_container_width=True)
+    monthly_cancelados = monthly_sales[monthly_sales['Status Pedido'] == 'Cancelado'].groupby('Data_str').agg({
+        value_column: 'sum',
+        'ID da venda': 'sum'
+    }).reset_index()
+
+    if not monthly_sales.empty:
+        # Gráfico de vendas mensais com aprovados e cancelados
+        fig_monthly = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=[f'{view_option} Mensal', 'Quantidade de Vendas Mensais'],
+            vertical_spacing=0.1
+        )
         
-        with col2:
-            # Pedidos por canal
-            canal_count = filtered_df['Canal de Venda'].value_counts()
-            
-            if not canal_count.empty:
-                fig_canal = px.bar(
-                    x=canal_count.index, y=canal_count.values,
-                    title='Pedidos por Canal de Venda'
-                )
-                st.plotly_chart(fig_canal, use_container_width=True)
-        
-        # Evolução diária de pedidos - Corrigido
-        daily_orders = filtered_df.groupby(filtered_df['Data'].dt.date).agg({
-            'ID da venda': 'count',
-            'Faturamento': 'sum'
-        }).reset_index()
-        
-        if not daily_orders.empty:
-            fig_daily = make_subplots(
-                rows=1, cols=2,
-                subplot_titles=['Pedidos Diários (Qtd.)', 'Faturamento Diário (R$)']
-            )
-            
-            fig_daily.add_trace(
-                go.Scatter(x=daily_orders['Data'], y=daily_orders['ID da venda'], 
-                          mode='lines+markers', name='Pedidos'),
+        # Adicionar barras de aprovados
+        if not monthly_aprovados.empty:
+            fig_monthly.add_trace(
+                go.Bar(x=monthly_aprovados['Data_str'], y=monthly_aprovados[value_column], 
+                    name=f'{view_option} Aprovado', marker_color='#1f77b4'),
                 row=1, col=1
             )
-            
-            fig_daily.add_trace(
-                go.Scatter(x=daily_orders['Data'], y=daily_orders['Faturamento'], 
-                          mode='lines+markers', name='Faturamento', line=dict(color='orange')),
-                row=1, col=2
+        
+        # Adicionar barras de cancelados
+        if not monthly_cancelados.empty:
+            fig_monthly.add_trace(
+                go.Bar(x=monthly_cancelados['Data_str'], y=monthly_cancelados[value_column], 
+                    name=f'{view_option} Cancelado', marker_color='#ff0000'),
+                row=1, col=1
             )
-            
-            fig_daily.update_layout(height=400, showlegend=False)
-            st.plotly_chart(fig_daily, use_container_width=True)
         
-        st.markdown("---")
-
-        st.subheader("Diário por Conta e Canal")
+        # Quantidade - aprovados
+        if not monthly_aprovados.empty:
+            fig_monthly.add_trace(
+                go.Scatter(x=monthly_aprovados['Data_str'], y=monthly_aprovados['ID da venda'], 
+                        mode='lines+markers', name='Qtd. Aprovada', marker_color='#1f77b4'),
+                row=2, col=1
+            )
         
-        # Criar relatório diário por conta e canal
-        relatorio_diario = filtered_df.groupby([
-            filtered_df['Data'].dt.date, 'Canal de Venda', 'Conta'
-        ]).agg({
-            'ID da venda': 'count',
-            'Faturamento': 'sum'
+        # Quantidade - cancelados
+        if not monthly_cancelados.empty:
+            fig_monthly.add_trace(
+                go.Scatter(x=monthly_cancelados['Data_str'], y=monthly_cancelados['ID da venda'], 
+                        mode='lines+markers', name='Qtd. Cancelada', marker_color='#ff0000'),
+                row=2, col=1
+            )
+        
+        fig_monthly.update_layout(
+            height=700, 
+            showlegend=True,
+            margin=dict(t=60, b=60, l=60, r=60),
+            barmode='stack'
+        )
+        fig_monthly.update_yaxes(title_text="Valor (R$)", row=1, col=1)
+        fig_monthly.update_yaxes(title_text="Quantidade", row=2, col=1)
+        
+        st.plotly_chart(fig_monthly, use_container_width=True)
+        
+        # Tabela de vendas mensais com aprovados e cancelados
+        monthly_complete = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'Status Pedido']).agg({
+            value_column: 'sum',
+            'ID da venda': 'count'
         }).reset_index()
-        relatorio_diario.columns = ['Data', 'Canal de Venda', 'Conta', 'Qtd. Vendas', 'Faturamento']
+        monthly_complete['Mês'] = monthly_complete['Data'].astype(str)
         
-        if not relatorio_diario.empty:
-            # Criar pivot para formato de tabela cruzada
-            pivot_qtd = relatorio_diario.pivot_table(
-                index='Data',
-                columns=['Canal de Venda', 'Conta'],
-                values='Qtd. Vendas',
-                fill_value=0,
-                aggfunc='sum'
-            )
-            
-            pivot_fat = relatorio_diario.pivot_table(
-                index='Data',
-                columns=['Canal de Venda', 'Conta'],
-                values='Faturamento',
-                fill_value=0,
-                aggfunc='sum'
-            )
-            
-            # Adicionar totais por canal
-            if not pivot_qtd.empty:
-                # QUANTIDADE - Armazenar colunas originais antes de adicionar totais
-                original_qtd_cols = pivot_qtd.columns.tolist()
-                
-                # Adicionar totais por canal
-                for canal in pivot_qtd.columns.get_level_values(0).unique():
-                    canal_cols = [col for col in pivot_qtd.columns if col[0] == canal]
-                    pivot_qtd[(canal, 'Total')] = pivot_qtd[canal_cols].sum(axis=1)
-                
-                # Total Geral usando APENAS as colunas originais (sem os totais por canal)
-                pivot_qtd[('Total Geral', '')] = pivot_qtd[original_qtd_cols].sum(axis=1)
-                
-                st.write("**Vendas Diárias (Qtd.)**")
-                st.dataframe(pivot_qtd.style.format('{:,.0f}'), use_container_width=True)
-                
-                # FATURAMENTO - Armazenar colunas originais antes de adicionar totais
-                original_fat_cols = pivot_fat.columns.tolist()
-                
-                # Adicionar totais por canal
-                for canal in pivot_fat.columns.get_level_values(0).unique():
-                    canal_cols = [col for col in pivot_fat.columns if col[0] == canal]
-                    pivot_fat[(canal, 'Total')] = pivot_fat[canal_cols].sum(axis=1)
-                
-                # Total Geral usando APENAS as colunas originais (sem os totais por canal)
-                pivot_fat[('Total Geral', '')] = pivot_fat[original_fat_cols].sum(axis=1)
-                
-                st.write("**Faturamento Diário (R$)**")
-                st.dataframe(pivot_fat.style.format('R$ {:,.2f}'), use_container_width=True)
+        monthly_pivot = monthly_complete.pivot_table(
+            index='Mês',
+            columns='Status Pedido',
+            values=[value_column, 'ID da venda'],
+            fill_value=0,
+            aggfunc='sum'
+        )
+        
+        st.dataframe(monthly_pivot.style.format('{:,.2f}'), use_container_width=True)
+
+        st.subheader("Faturamento por Origem de Aquisição")
+        
+        # Filtro para status de pedidos
+        status_filter = st.radio(
+            "Filtrar por status:",
+            ["Ambos", "Apenas Aprovados", "Apenas Cancelados"],
+            horizontal=True,
+            key="origem_status_filter"
+        )
+        
+        # Aplicar filtro de status
+        if status_filter == "Apenas Aprovados":
+            origem_filtered_df = filtered_df[filtered_df['Status Pedido'] != 'Cancelado']
+        elif status_filter == "Apenas Cancelados":
+            origem_filtered_df = filtered_df[filtered_df['Status Pedido'] == 'Cancelado']
         else:
-            st.info("Nenhum dado encontrado para o relatório diário.")
-    else:
-        st.info("Nenhum dado encontrado para o período selecionado.")
+            origem_filtered_df = filtered_df
+        
+        # Verificar se existe coluna Origem de Aquisição
+        if 'Origem de Aquisição' in origem_filtered_df.columns:
+            # Agrupar por mês e origem de aquisição
+            origem_monthly = origem_filtered_df.groupby([
+                origem_filtered_df['Data'].dt.to_period('M'), 
+                'Origem de Aquisição'
+            ]).agg({
+                value_column: 'sum'
+            }).reset_index()
+            origem_monthly['Data_str'] = origem_monthly['Data'].astype(str)
+            
+            if not origem_monthly.empty:
+                # Calcular total por mês para percentuais
+                total_por_mes = origem_monthly.groupby('Data_str')[value_column].sum().to_dict()
+                origem_monthly['Percentual'] = origem_monthly.apply(
+                    lambda row: (row[value_column] / total_por_mes[row['Data_str']] * 100) if total_por_mes[row['Data_str']] > 0 else 0, 
+                    axis=1
+                )
+                
+                # Criar texto com valor e percentual
+                origem_monthly['Texto'] = origem_monthly.apply(
+                    lambda row: f"R$ {row[value_column]:,.2f}<br>({row['Percentual']:.1f}%)", 
+                    axis=1
+                )
+                
+                fig_origem = px.bar(
+                    origem_monthly,
+                    x='Data_str',
+                    y=value_column,
+                    color='Origem de Aquisição',
+                    title=f'{view_option} por Origem de Aquisição',
+                    labels={'Data_str': 'Mês', value_column: f'{view_option} (R$)'},
+                    text='Texto'
+                )
+                fig_origem.update_traces(textposition='inside', textfont_size=10)
+                fig_origem.update_layout(height=500)
+                st.plotly_chart(fig_origem, use_container_width=True)
+            else:
+                st.info("Nenhum dado encontrado para o filtro selecionado.")
+        else:
+            st.warning("Coluna 'Origem de Aquisição' não encontrada no dataset.")
+
+        st.subheader("Pedidos")
+        
+        if not filtered_df.empty:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Pedidos por canal com status
+                canal_status = filtered_df.groupby(['Canal de Venda', 'Status Pedido']).size().reset_index(name='Quantidade')
+
+                if not canal_status.empty:
+                    # Criar labels combinados
+                    canal_status['Label'] = canal_status['Canal de Venda'] + ' - ' + canal_status['Status Pedido']
+                    
+                    # Definir cores
+                    color_map = {}
+                    for _, row in canal_status.iterrows():
+                        if row['Status Pedido'] == 'Cancelado':
+                            color_map[row['Label']] = '#ff0000'
+                        else:
+                            color_map[row['Label']] = '#1f77b4' if 'Mercado Livre' in row['Canal de Venda'] else '#ffa500'
+                
+                fig_canal = px.pie(
+                    canal_status, 
+                    values='Quantidade', 
+                    names='Label',
+                    title='Pedidos por Canal de Venda e Status',
+                    color='Label',
+                    color_discrete_map=color_map
+                )
+                st.plotly_chart(fig_canal, use_container_width=True)
+            
+            with col2:
+                # Pedidos por canal
+                canal_count = filtered_df['Canal de Venda'].value_counts()
+                
+                if not canal_count.empty:
+                    fig_canal = px.bar(
+                        x=canal_count.index, y=canal_count.values,
+                        title='Pedidos por Canal de Venda'
+                    )
+                    st.plotly_chart(fig_canal, use_container_width=True)
+            
+            # Evolução diária de pedidos - Corrigido
+            daily_orders = filtered_df.groupby(filtered_df['Data'].dt.date).agg({
+                'ID da venda': 'count',
+                'Faturamento': 'sum'
+            }).reset_index()
+            
+            if not daily_orders.empty:
+                fig_daily = make_subplots(
+                    rows=1, cols=2,
+                    subplot_titles=['Pedidos Diários (Qtd.)', 'Faturamento Diário (R$)']
+                )
+                
+                fig_daily.add_trace(
+                    go.Scatter(x=daily_orders['Data'], y=daily_orders['ID da venda'], 
+                            mode='lines+markers', name='Pedidos'),
+                    row=1, col=1
+                )
+                
+                fig_daily.add_trace(
+                    go.Scatter(x=daily_orders['Data'], y=daily_orders['Faturamento'], 
+                            mode='lines+markers', name='Faturamento', line=dict(color='orange')),
+                    row=1, col=2
+                )
+                
+                fig_daily.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig_daily, use_container_width=True)
+            
+            st.markdown("---")
+
+            st.subheader("Diário por Conta e Canal")
+            
+            # Criar relatório diário por conta e canal
+            relatorio_diario = filtered_df.groupby([
+                filtered_df['Data'].dt.date, 'Canal de Venda', 'Conta'
+            ]).agg({
+                'ID da venda': 'count',
+                'Faturamento': 'sum'
+            }).reset_index()
+            relatorio_diario.columns = ['Data', 'Canal de Venda', 'Conta', 'Qtd. Vendas', 'Faturamento']
+            
+            if not relatorio_diario.empty:
+                # Criar pivot para formato de tabela cruzada
+                pivot_qtd = relatorio_diario.pivot_table(
+                    index='Data',
+                    columns=['Canal de Venda', 'Conta'],
+                    values='Qtd. Vendas',
+                    fill_value=0,
+                    aggfunc='sum'
+                )
+                
+                pivot_fat = relatorio_diario.pivot_table(
+                    index='Data',
+                    columns=['Canal de Venda', 'Conta'],
+                    values='Faturamento',
+                    fill_value=0,
+                    aggfunc='sum'
+                )
+                
+                # Adicionar totais por canal
+                if not pivot_qtd.empty:
+                    # QUANTIDADE - Armazenar colunas originais antes de adicionar totais
+                    original_qtd_cols = pivot_qtd.columns.tolist()
+                    
+                    # Adicionar totais por canal
+                    for canal in pivot_qtd.columns.get_level_values(0).unique():
+                        canal_cols = [col for col in pivot_qtd.columns if col[0] == canal]
+                        pivot_qtd[(canal, 'Total')] = pivot_qtd[canal_cols].sum(axis=1)
+                    
+                    # Total Geral usando APENAS as colunas originais (sem os totais por canal)
+                    pivot_qtd[('Total Geral', '')] = pivot_qtd[original_qtd_cols].sum(axis=1)
+                    
+                    st.write("**Vendas Diárias (Qtd.)**")
+                    st.dataframe(pivot_qtd.style.format('{:,.0f}'), use_container_width=True)
+                    
+                    # FATURAMENTO - Armazenar colunas originais antes de adicionar totais
+                    original_fat_cols = pivot_fat.columns.tolist()
+                    
+                    # Adicionar totais por canal
+                    for canal in pivot_fat.columns.get_level_values(0).unique():
+                        canal_cols = [col for col in pivot_fat.columns if col[0] == canal]
+                        pivot_fat[(canal, 'Total')] = pivot_fat[canal_cols].sum(axis=1)
+                    
+                    # Total Geral usando APENAS as colunas originais (sem os totais por canal)
+                    pivot_fat[('Total Geral', '')] = pivot_fat[original_fat_cols].sum(axis=1)
+                    
+                    st.write("**Faturamento Diário (R$)**")
+                    st.dataframe(pivot_fat.style.format('R$ {:,.2f}'), use_container_width=True)
+            else:
+                st.info("Nenhum dado encontrado para o relatório diário.")
+        else:
+            st.info("Nenhum dado encontrado para o período selecionado.")
 
 
 with tab2:
     st.subheader("Desempenho de Vendas por SKU")
     
-    # Filtro de pesquisa para SKUs e Descrição (que será usado para tudo)
-    col_search1, col_search2, col_select = st.columns([1, 1, 2])
+    # Filtro de pesquisa para SKUs, Descrição e Origem de Aquisição
+    col_search1, col_search2, col_search3, col_select = st.columns([1, 1, 1, 2])
 
     with col_search1:
         search_term = st.text_input("Buscar SKU:", key="sku_search")
 
     with col_search2:
         desc_search_term = st.text_input("Buscar Descrição:", key="desc_search")
+    
+    with col_search3:
+        # Filtro de Origem de Aquisição
+        if 'Origem de Aquisição' in filtered_df.columns:
+            origem_options = ["Todas"] + sorted(filtered_df['Origem de Aquisição'].dropna().unique().tolist())
+            origem_selected = st.selectbox("Origem de Aquisição:", origem_options, key="origem_filter_main")
+        else:
+            origem_selected = "Todas"
 
     # Garantir que os SKUs sejam tratados como texto e criar mapeamento consistente
     filtered_df_copy = filtered_df.copy()
+    
+    # Aplicar filtro de origem de aquisição
+    if origem_selected != "Todas" and 'Origem de Aquisição' in filtered_df_copy.columns:
+        filtered_df_copy = filtered_df_copy[filtered_df_copy['Origem de Aquisição'] == origem_selected]
+    
     filtered_df_copy['SKU'] = filtered_df_copy['SKU'].astype(str)
     filtered_df_copy['Descrição do Produto'] = filtered_df_copy['Descrição do Produto'].astype(str).fillna('Sem descrição')
 
@@ -736,7 +809,7 @@ with tab2:
     sku_desc_mapping = filtered_df_copy.groupby('SKU')['Descrição do Produto'].first().to_dict()
     available_skus = sorted(filtered_df_copy['SKU'].unique())
 
-    # Filtrar SKUs baseado na busca por SKU ou Descrição
+    # Filtrar SKUs baseado na busca por SKU ou Descrição (apenas para o multiselect)
     if search_term or desc_search_term:
         filtered_skus = []
         for sku in available_skus:
@@ -746,12 +819,11 @@ with tab2:
                 if sku_match and desc_match:
                     filtered_skus.append(sku)
             except KeyError:
-                # Pular SKUs que não têm descrição mapeada
                 continue
         available_skus = filtered_skus
 
     with col_select:
-        # Criar opções que mostram SKU + Descrição com tratamento de erro
+        # Criar opções que mostram SKU + Descrição
         sku_options = []
         for sku in available_skus:
             try:
@@ -762,25 +834,45 @@ with tab2:
                     option = f"{sku} - {desc}"
                 sku_options.append(option)
             except (KeyError, TypeError):
-                # Se houver erro, usar apenas o SKU
                 sku_options.append(f"{sku} - Sem descrição")
+        
+        # Calcular os 3 SKUs que mais venderam (por quantidade total)
+        top_skus_by_sales = filtered_df_copy.groupby('SKU').agg({
+            'Qtd.': 'sum',
+            'Descrição do Produto': 'first'
+        }).reset_index().sort_values('Qtd.', ascending=False).head(3)
+        
+        # Criar lista dos top 3 SKUs no formato das opções
+        default_sku_options = []
+        for _, row in top_skus_by_sales.iterrows():
+            sku = str(row['SKU'])
+            desc = str(row['Descrição do Produto']) if pd.notna(row['Descrição do Produto']) else 'Sem descrição'
+            if len(desc) > 50:
+                option = f"{sku} - {desc[:50]}..."
+            else:
+                option = f"{sku} - {desc}"
+            
+            # Verificar se a opção existe na lista de opções disponíveis
+            if option in sku_options:
+                default_sku_options.append(option)
         
         selected_sku_options = st.multiselect(
             "Selecionar SKUs:",
             options=sku_options,
-            default=sku_options[:5] if len(sku_options) <= 5 else sku_options[:3],
+            default=default_sku_options,  # Usar os 3 SKUs que mais venderam
             key="sku_multiselect"
         )
         
         # Extrair apenas os SKUs das opções selecionadas
         selected_skus = [option.split(" - ")[0] for option in selected_sku_options]
 
-    # Filtrar dados pelos SKUs selecionados OU pelos filtros de busca
+    # Lógica principal: definir dados para relatórios
     if selected_skus:
-        filtered_sku_df = filtered_df[filtered_df['SKU'].astype(str).isin(selected_skus)]
+        # Se SKUs específicos foram selecionados, usar apenas eles
+        filtered_sku_df = filtered_df_copy[filtered_df_copy['SKU'].astype(str).isin(selected_skus)]
     else:
-        # Se não há SKUs selecionados, usar o filtro de busca
-        filtered_sku_df = filtered_df[filtered_df['SKU'].astype(str).isin(available_skus)]
+        # Se nenhum SKU foi selecionado, usar TODOS os SKUs (respeitando filtro de origem)
+        filtered_sku_df = filtered_df_copy
 
     # NOVO: Painel de Resultado Geral dos SKUs selecionados/filtrados
     if not filtered_sku_df.empty:
@@ -829,7 +921,7 @@ with tab2:
         sku_desc_map = filtered_sku_df.groupby('SKU')['Descrição do Produto'].first().to_dict()
         filtered_sku_df_with_desc['SKU_Desc'] = filtered_sku_df_with_desc['SKU'].map(sku_desc_map)
 
-        if not filtered_sku_df.empty and (selected_skus or search_term or desc_search_term):
+        if not filtered_sku_df.empty:
             # SKUs por quantidade mensal
             
             sku_monthly_qty = filtered_sku_df_with_desc.groupby([filtered_sku_df_with_desc['Data'].dt.to_period('M'), 'SKU_Desc']).agg({
@@ -862,13 +954,11 @@ with tab2:
 
                 fig_sku_revenue.update_layout(height=600)
                 st.plotly_chart(fig_sku_revenue, use_container_width=True)
-        else:
-            st.info("Use os filtros acima para visualizar a evolução mensal dos SKUs.")  
         
-        # NOVO: Gráficos de barras agrupadas por SKU
+    # NOVO: Gráficos de barras agrupadas por SKU
     st.markdown("---")
 
-    if not filtered_sku_df.empty and (selected_skus or search_term or desc_search_term):
+    if not filtered_sku_df.empty:
         # Preparar dados para gráficos agrupados
         monthly_comparison = filtered_sku_df.groupby([
             filtered_sku_df['Data'].dt.to_period('M'), 'SKU', 'Descrição do Produto'
@@ -1037,17 +1127,17 @@ with tab2:
             # Aplicar os mesmos filtros da busca na tabela (removendo filtros duplicados)
             table_filtered_df = filtered_sku_df.copy()  # Usar o mesmo filtro dos gráficos
             
-            # Definir todas as colunas disponíveis na ordem correta
+            # Definir todas as colunas disponíveis na ordem correta (incluindo Origem de Aquisição)
             all_columns = [
-                'SKU', 'Descrição do Produto', 'Faturamento', 'Qtd.', 'Valor Unit.',
+                'SKU', 'Descrição do Produto', 'Origem de Aquisição', 'Faturamento', 'Qtd.', 'Valor Unit.',
                 'Custo (-) Total', 'Custo (-) Unitário', 'Imposto (-) Total', 'Imposto (-) Unitário',
                 'Frete Vendedor (-)', 'Tarifa de Venda (-) Total', 'Tarifa de Venda (-) Unitária',
                 'Margem Contrib. (=) Total', 'Margem Contrib. (=) Unitária', 'MC em %'
             ]
-            
-            # Colunas visíveis por padrão (com as modificações solicitadas)
+        
+            # Colunas visíveis por padrão (incluindo Origem de Aquisição)
             default_visible_columns = [
-                'Descrição do Produto', 'Faturamento', 'Qtd.', 'Valor Unit.',
+                'Descrição do Produto', 'Origem de Aquisição', 'Faturamento', 'Qtd.', 'Valor Unit.',
                 'Custo (-) Unitário', 'Imposto (-) Unitário', 'Tarifa de Venda (-) Unitária',
                 'Margem Contrib. (=) Unitária', 'MC em %'
             ]
@@ -1061,9 +1151,10 @@ with tab2:
                     key="table_columns"
                 )
             
-            # Agrupar dados por SKU com cálculos corretos
+            # Agrupar dados por SKU com cálculos corretos (incluindo Origem de Aquisição)
             resumo_sku = table_filtered_df.groupby('SKU').agg({
                 'Descrição do Produto': 'first',
+                'Origem de Aquisição': 'first',
                 'Faturamento': 'sum',
                 'Qtd.': 'sum',
                 'Valor Unit.': 'mean',
@@ -1076,7 +1167,7 @@ with tab2:
 
             # Achatar colunas multi-nível
             resumo_sku.columns = [
-                'SKU', 'Descrição do Produto',
+                'SKU', 'Descrição do Produto', 'Origem de Aquisição',
                 'Faturamento', 'Qtd.', 'Valor Unit.',
                 'Custo (-) Total', 'Custo (-) Unitário',
                 'Imposto (-) Total', 'Imposto (-) Unitário',
@@ -1131,15 +1222,18 @@ with tab2:
             # Exibir tabela
             st.dataframe(styled, use_container_width=True, hide_index=True)
 
-            st.markdown("""
+        else:
+            st.info("Nenhum dado encontrado para o período selecionado.")
+
+        st.markdown("""
             **Legenda:**
             - 🔴 ≤ 20%
             - 🟡 > 20% e < 30%
             - 🟢 ≥ 30% e < 40%
             - 🔵 ≥ 40%
             """)
-        else:
-            st.info("Nenhum dado encontrado para o período selecionado.")
+
+        st.markdown("---")        
         
         st.subheader("📈 Top SKUs por Mês")
 
