@@ -310,7 +310,7 @@ with col3:
 
 with col4:
     growth_aprovado = ((total_aprovado - (prev_bruto - prev_cancelado)) / (prev_bruto - prev_cancelado) * 100) if (prev_bruto - prev_cancelado) > 0 else 0
-    st.metric("MC (R$)", f"R$ {total_aprovado:,.2f}", f"{growth_aprovado:+.1f}%")
+    st.metric("Faturamento Válido", f"R$ {total_aprovado:,.2f}", f"{growth_aprovado:+.1f}%")
 
 with col5:
     total_margem = aprovados_df['Margem Contrib. (=)'].sum()
