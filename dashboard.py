@@ -317,7 +317,9 @@ with col5:
     prev_margem = previous_df[previous_df['Status Pedido'] != 'Cancelado']['Margem Contrib. (=)'].sum() if not previous_df.empty else 0
     growth_margem = ((total_margem - prev_margem) / prev_margem * 100) if prev_margem > 0 else 0
     avg_margem_perc = (total_margem / total_aprovado * 100) if total_aprovado > 0 else 0
-    st.metric("MC (%)", f"{avg_margem_perc:.1f}%", f"{growth_margem:+.1f}%")
+    st.metric("MC (R$)", f"R$ {total_margem:,.2f}", f"{growth_margem:+.1f}%")
+    st.markdown(f'<div style="margin-top: -10px; opacity: 0.6; font-size: 0.8em;">({avg_margem_perc:.1f}%)</div>', unsafe_allow_html=True)
+
 
 
 
@@ -1233,7 +1235,241 @@ with tab2:
             - 🔵 ≥ 40%
             """)
 
-        st.markdown("---")        
+        st.markdown("---")
+        st.subheader("📊 Relatório de Desempenho por SKU")
+        
+        # Seletor de intervalo de tempo
+        col_time1, col_time2 = st.columns([1, 3])
+        
+        with col_time1:
+            time_interval = st.selectbox(
+                "Intervalo de tempo:",
+                ["Mensal", "7 dias", "15 dias"],
+                key="time_interval_report"
+            )
+        
+        with col_time2:
+            st.write("")  # Espaçamento
+        
+        if not filtered_sku_df.empty:
+            # Função para agrupar dados baseado no intervalo selecionado
+            def get_time_grouping(df, interval):
+                if interval == "Mensal":
+                    return df['Data'].dt.to_period('M')
+                elif interval == "7 dias":
+                    # Agrupar por semanas (7 dias)
+                    return df['Data'].dt.to_period('W')
+                elif interval == "15 dias":
+                    # Agrupar por quinzenas
+                    return (df['Data'] - df['Data'].min()).dt.days // 15
+            
+            def get_time_label(interval):
+                if interval == "Mensal":
+                    return "Mês"
+                elif interval == "7 dias":
+                    return "Semana"
+                elif interval == "15 dias":
+                    return "Quinzena"
+            
+            # Preparar dados para o relatório
+            time_group = get_time_grouping(filtered_sku_df, time_interval)
+            time_label = get_time_label(time_interval)
+            
+            # Criar agrupamento temporal
+            if time_interval == "15 dias":
+                # Para quinzenas, precisamos de lógica especial
+                filtered_sku_df_temp = filtered_sku_df.copy()
+                filtered_sku_df_temp['Quinzena'] = (filtered_sku_df_temp['Data'] - filtered_sku_df_temp['Data'].min()).dt.days // 15
+                filtered_sku_df_temp['Quinzena_Label'] = filtered_sku_df_temp['Quinzena'].apply(
+                    lambda x: f"Q{x+1} ({(filtered_sku_df_temp['Data'].min() + pd.Timedelta(days=x*15)).strftime('%d/%m')} - {(filtered_sku_df_temp['Data'].min() + pd.Timedelta(days=(x+1)*15-1)).strftime('%d/%m')})"
+                )
+                
+                sku_performance = filtered_sku_df_temp.groupby(['SKU', 'Descrição do Produto', 'Quinzena_Label']).agg({
+                    'ID da venda': 'count',  # Quantidade de vendas
+                    'Faturamento': 'sum',    # Faturamento total
+                    'Valor Unit.': 'mean',   # Faturamento unitário (preço médio)
+                    'Margem Contrib. (=)': ['sum', 'mean']  # Margem total e unitária
+                }).reset_index()
+                
+                # Achatar colunas multi-nível
+                sku_performance.columns = ['SKU', 'Descrição do Produto', time_label, 'Qtd_Vendas', 'Fat_Total', 'Fat_Unitario', 'MC_Total', 'MC_Unitaria']
+                
+            else:
+                # Para mensal e semanal
+                filtered_sku_df_temp = filtered_sku_df.copy()
+                filtered_sku_df_temp['Periodo'] = time_group
+                if time_interval == "Mensal":
+                    filtered_sku_df_temp['Periodo_Label'] = filtered_sku_df_temp['Periodo'].dt.strftime('%b %Y')
+                else:  # 7 dias
+                    filtered_sku_df_temp['Periodo_Label'] = filtered_sku_df_temp['Periodo'].astype(str)
+                
+                sku_performance = filtered_sku_df_temp.groupby(['SKU', 'Descrição do Produto', 'Periodo_Label']).agg({
+                    'ID da venda': 'count',  # Quantidade de vendas
+                    'Faturamento': 'sum',    # Faturamento total
+                    'Valor Unit.': 'mean',   # Faturamento unitário (preço médio)
+                    'Margem Contrib. (=)': ['sum', 'mean']  # Margem total e unitária
+                }).reset_index()
+                
+                # Achatar colunas multi-nível
+                sku_performance.columns = ['SKU', 'Descrição do Produto', time_label, 'Qtd_Vendas', 'Fat_Total', 'Fat_Unitario', 'MC_Total', 'MC_Unitaria']
+            
+            # Calcular MC em %
+            sku_performance['MC_Perc'] = np.where(
+                sku_performance['Fat_Total'] > 0,
+                (sku_performance['MC_Total'] / sku_performance['Fat_Total']) * 100,
+                0
+            )
+            
+            # CRIAR TABELA UNIFICADA
+            if not sku_performance.empty:
+                # Obter lista única de SKUs e períodos
+                skus_unique = sku_performance[['SKU', 'Descrição do Produto']].drop_duplicates()
+                periods = sorted(sku_performance[time_label].unique())
+                
+                # Criar estrutura da tabela unificada
+                unified_table = []
+                
+                for _, sku_row in skus_unique.iterrows():
+                    sku = sku_row['SKU']
+                    desc = sku_row['Descrição do Produto']
+                    
+                    # Obter dados do SKU para todos os períodos
+                    sku_data = sku_performance[
+                        (sku_performance['SKU'] == sku) & 
+                        (sku_performance['Descrição do Produto'] == desc)
+                    ].set_index(time_label)
+                    
+                    # Criar linha da tabela unificada
+                    row = {'SKU': sku, 'Descrição do Produto': desc}
+                    
+                    # Adicionar métricas para cada período
+                    for i, period in enumerate(periods):
+                        if period in sku_data.index:
+                            period_data = sku_data.loc[period]
+                            
+                            # Métricas do período atual
+                            row[f'{period}_Qtd'] = period_data['Qtd_Vendas']
+                            row[f'{period}_Fat'] = period_data['Fat_Total']
+                            row[f'{period}_Fat_Unit'] = period_data['Fat_Unitario']
+                            row[f'{period}_MC_Unit'] = period_data['MC_Unitaria']
+                            row[f'{period}_MC%'] = period_data['MC_Perc']
+                            
+                            # Calcular variações em relação ao período anterior
+                            if i > 0:
+                                prev_period = periods[i-1]
+                                if prev_period in sku_data.index:
+                                    prev_data = sku_data.loc[prev_period]
+                                    
+                                    # Variação Quantidade
+                                    if prev_data['Qtd_Vendas'] > 0:
+                                        row[f'{period}_Var_Qtd%'] = ((period_data['Qtd_Vendas'] - prev_data['Qtd_Vendas']) / prev_data['Qtd_Vendas'] * 100)
+                                    else:
+                                        row[f'{period}_Var_Qtd%'] = 0
+                                    
+                                    # Variação Faturamento
+                                    if prev_data['Fat_Total'] > 0:
+                                        row[f'{period}_Var_Fat%'] = ((period_data['Fat_Total'] - prev_data['Fat_Total']) / prev_data['Fat_Total'] * 100)
+                                    else:
+                                        row[f'{period}_Var_Fat%'] = 0
+                                    
+                                    # Variação MC Unitária
+                                    if prev_data['MC_Unitaria'] != 0:
+                                        row[f'{period}_Var_MC%'] = ((period_data['MC_Unitaria'] - prev_data['MC_Unitaria']) / abs(prev_data['MC_Unitaria']) * 100)
+                                    else:
+                                        row[f'{period}_Var_MC%'] = 0
+                                else:
+                                    row[f'{period}_Var_Qtd%'] = 0
+                                    row[f'{period}_Var_Fat%'] = 0
+                                    row[f'{period}_Var_MC%'] = 0
+                            else:
+                                # Primeiro período não tem variação
+                                row[f'{period}_Var_Qtd%'] = 0
+                                row[f'{period}_Var_Fat%'] = 0
+                                row[f'{period}_Var_MC%'] = 0
+                        else:
+                            # Período sem dados
+                            row[f'{period}_Qtd'] = 0
+                            row[f'{period}_Fat'] = 0
+                            row[f'{period}_Fat_Unit'] = 0
+                            row[f'{period}_MC_Unit'] = 0
+                            row[f'{period}_MC%'] = 0
+                            row[f'{period}_Var_Qtd%'] = 0
+                            row[f'{period}_Var_Fat%'] = 0
+                            row[f'{period}_Var_MC%'] = 0
+                    
+                    unified_table.append(row)
+                
+                # Converter para DataFrame
+                unified_df = pd.DataFrame(unified_table)
+                
+                # Reordenar colunas para melhor visualização
+                base_cols = ['SKU', 'Descrição do Produto']
+                metric_cols = []
+                
+                for period in periods:
+                    metric_cols.extend([
+                        f'{period}_Qtd',
+                        f'{period}_Var_Qtd%',
+                        f'{period}_Fat',
+                        f'{period}_Var_Fat%',
+                        f'{period}_Fat_Unit',
+                        f'{period}_MC_Unit',
+                        f'{period}_Var_MC%',
+                        f'{period}_MC%'
+                    ])
+                
+                final_cols = base_cols + metric_cols
+                unified_df = unified_df[final_cols]
+                
+                # Criar dicionário de formatação
+                format_dict = {}
+                
+                for period in periods:
+                    format_dict[f'{period}_Qtd'] = '{:,.0f}'
+                    format_dict[f'{period}_Fat'] = 'R$ {:,.2f}'
+                    format_dict[f'{period}_Fat_Unit'] = 'R$ {:,.2f}'
+                    format_dict[f'{period}_MC_Unit'] = 'R$ {:,.2f}'
+                    format_dict[f'{period}_MC%'] = '{:.1f}%'
+                    format_dict[f'{period}_Var_Qtd%'] = '{:+.1f}%'
+                    format_dict[f'{period}_Var_Fat%'] = '{:+.1f}%'
+                    format_dict[f'{period}_Var_MC%'] = '{:+.1f}%'
+                
+                # Função para colorir variações
+                def color_variations(val, col_name):
+                    if 'Var_' in col_name and col_name.endswith('%'):
+                        if pd.isna(val) or val == 0:
+                            return ''
+                        if val > 0:
+                            return 'color: green'
+                        elif val < 0:
+                            return 'color: red'
+                    return ''
+                
+                # Aplicar formatação e estilo
+                styled_df = unified_df.style.format(format_dict)
+                
+                # Aplicar cores nas variações
+                for col in unified_df.columns:
+                    if 'Var_' in col and col.endswith('%'):
+                        styled_df = styled_df.applymap(lambda x: color_variations(x, col), subset=[col])
+                
+                st.write("**Relatório Unificado de Performance por SKU**")
+                st.write(f"*Métricas: Qtd = Quantidade de Vendas | Fat = Faturamento Total | Fat_Unit = Faturamento Unitário | MC_Unit = Margem de Contribuição Unitária | MC% = Margem de Contribuição % | Var_% = Variação Percentual*")
+                
+                st.dataframe(styled_df, use_container_width=True, height=400)
+                
+                # Opção para download
+                csv = unified_df.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Download Relatório (CSV)",
+                    data=csv,
+                    file_name=f"relatorio_performance_sku_{time_interval.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime='text/csv'
+                )
+        else:
+            st.info("Nenhum SKU selecionado ou dados não encontrados.")
+
+        st.markdown("---")    
         
         st.subheader("📈 Top SKUs por Mês")
 
