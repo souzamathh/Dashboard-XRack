@@ -355,7 +355,7 @@ if not filtered_df.empty:
     def calculate_channel_metrics(df, prev_df=None):
         """Calcula métricas por canal considerando cancelamentos"""
         result = {}
-    
+
         for canal in ['Mercado Livre', 'Shopee']:
             canal_df = df[df['Canal de Venda'] == canal]
         
@@ -370,9 +370,14 @@ if not filtered_df.empty:
             qtd_cancelada = len(canal_df[canal_df['Status Pedido'] == 'Cancelado'])
             qtd_aprovada = qtd_total - qtd_cancelada
             perc_cancelado_qtd = (qtd_cancelada / qtd_total * 100) if qtd_total > 0 else 0
+            
+            # Margem
+            margem = canal_df[canal_df['Status Pedido'] != 'Cancelado']['Margem Contrib. (=)'].sum()
+            mc_perc = (margem / aprovado * 100) if aprovado > 0 else 0
         
             # Período anterior
-            prev_bruto = prev_aprovado = prev_qtd_aprovada = 0
+            prev_bruto = prev_aprovado = prev_qtd_aprovada = prev_cancelado = prev_qtd_cancelada = 0
+            prev_perc_cancelado_fat = prev_perc_cancelado_qtd = 0
             if prev_df is not None and not prev_df.empty:
                 prev_canal_df = prev_df[prev_df['Canal de Venda'] == canal]
                 prev_bruto = prev_canal_df['Faturamento'].sum()
@@ -381,6 +386,8 @@ if not filtered_df.empty:
                 prev_qtd_total = len(prev_canal_df)
                 prev_qtd_cancelada = len(prev_canal_df[prev_canal_df['Status Pedido'] == 'Cancelado'])
                 prev_qtd_aprovada = prev_qtd_total - prev_qtd_cancelada
+                prev_perc_cancelado_fat = (prev_cancelado / prev_bruto * 100) if prev_bruto > 0 else 0
+                prev_perc_cancelado_qtd = (prev_qtd_cancelada / prev_qtd_total * 100) if prev_qtd_total > 0 else 0
             
             growth_fat = ((aprovado - prev_aprovado) / prev_aprovado * 100) if prev_aprovado > 0 else 0
             growth_qtd = ((qtd_aprovada - prev_qtd_aprovada) / prev_qtd_aprovada * 100) if prev_qtd_aprovada > 0 else 0
@@ -395,7 +402,9 @@ if not filtered_df.empty:
                 'qtd_aprovada': qtd_aprovada,
                 'perc_cancelado_qtd': perc_cancelado_qtd,
                 'growth_fat': growth_fat,
-                'growth_qtd': growth_qtd
+                'growth_qtd': growth_qtd,
+                'margem': margem,
+                'mc_perc': mc_perc
             }
             
             # Por conta
@@ -418,6 +427,20 @@ if not filtered_df.empty:
                 conta_margem = conta_df[conta_df['Status Pedido'] != 'Cancelado']['Margem Contrib. (=)'].sum()
                 conta_mc_perc = (conta_margem / conta_aprovado * 100) if conta_aprovado > 0 else 0
                 
+                # Período anterior para contas
+                prev_conta_aprovado = prev_conta_qtd_aprovada = 0
+                if prev_df is not None and not prev_df.empty:
+                    prev_conta_df = prev_df[(prev_df['Canal de Venda'] == canal) & (prev_df['Conta'] == conta)]
+                    prev_conta_bruto = prev_conta_df['Faturamento'].sum()
+                    prev_conta_cancelado = prev_conta_df[prev_conta_df['Status Pedido'] == 'Cancelado']['Faturamento'].sum()
+                    prev_conta_aprovado = prev_conta_bruto - prev_conta_cancelado
+                    prev_conta_qtd_total = len(prev_conta_df)
+                    prev_conta_qtd_cancelada = len(prev_conta_df[prev_conta_df['Status Pedido'] == 'Cancelado'])
+                    prev_conta_qtd_aprovada = prev_conta_qtd_total - prev_conta_qtd_cancelada
+                
+                conta_growth_fat = ((conta_aprovado - prev_conta_aprovado) / prev_conta_aprovado * 100) if prev_conta_aprovado > 0 else 0
+                conta_growth_qtd = ((conta_qtd_aprovada - prev_conta_qtd_aprovada) / prev_conta_qtd_aprovada * 100) if prev_conta_qtd_aprovada > 0 else 0
+                
                 result[f'{canal}_{conta}'] = {
                     'bruto': conta_bruto,
                     'cancelado': conta_cancelado,
@@ -428,29 +451,31 @@ if not filtered_df.empty:
                     'qtd_aprovada': conta_qtd_aprovada,
                     'perc_cancelado_qtd': conta_perc_cancelado_qtd,
                     'margem': conta_margem,
-                    'mc_perc': conta_mc_perc
+                    'mc_perc': conta_mc_perc,
+                    'growth_fat': conta_growth_fat,
+                    'growth_qtd': conta_growth_qtd
                 }
         
         return result
+
     
     metrics = calculate_channel_metrics(filtered_df, previous_df)
     
-    # Primeira linha - Totais por Canal
-    # Primeira linha - Totais por Canal
+# Primeira linha - Totais por Canal
 col1, col2 = st.columns(2)
 
 with col1:
     ml_data = metrics['Mercado Livre']
     st.metric("🟡 Mercado Livre (Fat.)", f"R$ {ml_data['aprovado']:,.2f}", f"{ml_data['growth_fat']:+.1f}%")
-    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>Bruto:</strong> R$ {ml_data["bruto"]:,.2f} | <strong>Cancelado:</strong> R$ {ml_data["cancelado"]:,.2f} <strong>({ml_data["perc_cancelado_fat"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_data["margem"]:,.2f} <strong>({ml_data["mc_perc"]:.1f}%)</strong> | <strong>Bruto:</strong> R$ {ml_data["bruto"]:,.2f} | <strong>Cancelado:</strong> R$ {ml_data["cancelado"]:,.2f} <strong>({ml_data["perc_cancelado_fat"]:.1f}%)</strong></div>', unsafe_allow_html=True)
     st.metric("🟡 Mercado Livre (Qtd.)", f"{ml_data['qtd_aprovada']:,}", f"{ml_data['growth_qtd']:+.1f}%")
     st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Total:</strong> {ml_data["qtd_total"]:,} | <strong>Canceladas:</strong> {ml_data["qtd_cancelada"]:,} <strong>({ml_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
 
 with col2:
     shopee_data = metrics['Shopee']
     st.metric("🔴 Shopee (Fat.)", f"R$ {shopee_data['aprovado']:,.2f}", f"{shopee_data['growth_fat']:+.1f}%")
-    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>Bruto:</strong> R$ {shopee_data["bruto"]:,.2f} | <strong>Cancelado:</strong> R$ {shopee_data["cancelado"]:,.2f} <strong>({shopee_data["perc_cancelado_fat"]:.1f}%)</strong></div>', unsafe_allow_html=True)
-    st.metric("🔴 Shopee (Qtd.)", f"{shopee_data['qtd_aprovada']:,}")
+    st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {shopee_data["margem"]:,.2f} <strong>({shopee_data["mc_perc"]:.1f}%)</strong> | <strong>Bruto:</strong> R$ {shopee_data["bruto"]:,.2f} | <strong>Cancelado:</strong> R$ {shopee_data["cancelado"]:,.2f} <strong>({shopee_data["perc_cancelado_fat"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.metric("🔴 Shopee (Qtd.)", f"{shopee_data['qtd_aprovada']:,}", f"{shopee_data['growth_qtd']:+.1f}%")
     st.markdown(f'<div style="margin-top: -10px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Total:</strong> {shopee_data["qtd_total"]:,} | <strong>Canceladas:</strong> {shopee_data["qtd_cancelada"]:,} <strong>({shopee_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
 
 # Linhas seguintes - Por Conta e Canal
@@ -458,30 +483,29 @@ col1, col2 = st.columns(2)
 
 with col1:
     ml_xr_data = metrics['Mercado Livre_XRack']
-    st.metric("🟡 XRack", f"R$ {ml_xr_data['aprovado']:,.2f}")
+    st.metric("🟡 XRack", f"R$ {ml_xr_data['aprovado']:,.2f}", f"{ml_xr_data['growth_fat']:+.1f}%")
     st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_xr_data["margem"]:,.2f} <strong>({ml_xr_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {ml_xr_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
-    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {ml_xr_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {ml_xr_data["qtd_cancelada"]:,} <strong>({ml_xr_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 30px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {ml_xr_data["qtd_aprovada"]:,} <strong>({ml_xr_data["growth_qtd"]:+.1f}%)</strong> | <strong>Cancel.(Qtd.):</strong> {ml_xr_data["qtd_cancelada"]:,} <strong>({ml_xr_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
 
 with col2:
     ml_ev_data = metrics['Mercado Livre_EvolutionX']
-    st.metric("🟡 EvolutionX", f"R$ {ml_ev_data['aprovado']:,.2f}")
+    st.metric("🟡 EvolutionX", f"R$ {ml_ev_data['aprovado']:,.2f}", f"{ml_ev_data['growth_fat']:+.1f}%")
     st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {ml_ev_data["margem"]:,.2f} <strong>({ml_ev_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {ml_ev_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
-    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {ml_ev_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {ml_ev_data["qtd_cancelada"]:,} <strong>({ml_ev_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {ml_ev_data["qtd_aprovada"]:,} <strong>({ml_ev_data["growth_qtd"]:+.1f}%)</strong> | <strong>Cancel.(Qtd.):</strong> {ml_ev_data["qtd_cancelada"]:,} <strong>({ml_ev_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
 with col1:
     sh_xr_data = metrics['Shopee_XRack']
-    st.metric("🔴 XRack", f"R$ {sh_xr_data['aprovado']:,.2f}")
+    st.metric("🔴 XRack", f"R$ {sh_xr_data['aprovado']:,.2f}", f"{sh_xr_data['growth_fat']:+.1f}%")
     st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {sh_xr_data["margem"]:,.2f} <strong>({sh_xr_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {sh_xr_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
-    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {sh_xr_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {sh_xr_data["qtd_cancelada"]:,} <strong>({sh_xr_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {sh_xr_data["qtd_aprovada"]:,} <strong>({sh_xr_data["growth_qtd"]:+.1f}%)</strong> | <strong>Cancel.(Qtd.):</strong> {sh_xr_data["qtd_cancelada"]:,} <strong>({sh_xr_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
 
 with col2:
     sh_ev_data = metrics['Shopee_EvolutionX']
-    st.metric("🔴 EvolutionX", f"R$ {sh_ev_data['aprovado']:,.2f}")
+    st.metric("🔴 EvolutionX", f"R$ {sh_ev_data['aprovado']:,.2f}", f"{sh_ev_data['growth_fat']:+.1f}%")
     st.markdown(f'<div style="margin-top: -10px; margin-bottom: 5px; opacity: 0.6; font-size: 0.8em;"><strong>MC:</strong> R$ {sh_ev_data["margem"]:,.2f} <strong>({sh_ev_data["mc_perc"]:.1f}%)</strong> | <strong>Cancel.(Fat.):</strong> {sh_ev_data["perc_cancelado_fat"]:.1f}%</div>', unsafe_allow_html=True)
-    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {sh_ev_data["qtd_aprovada"]:,} | <strong>Cancel.(Qtd.):</strong> {sh_ev_data["qtd_cancelada"]:,} <strong>({sh_ev_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)
-    
+    st.markdown(f'<div style="margin-top: -5px; margin-bottom: 20px; opacity: 0.6; font-size: 0.8em;"><strong>Vendas:</strong> {sh_ev_data["qtd_aprovada"]:,} <strong>({sh_ev_data["growth_qtd"]:+.1f}%)</strong> | <strong>Cancel.(Qtd.):</strong> {sh_ev_data["qtd_cancelada"]:,} <strong>({sh_ev_data["perc_cancelado_qtd"]:.1f}%)</strong></div>', unsafe_allow_html=True)    
 st.markdown("---")
 
 # Opção de visualização (Faturamento vs Margem)
@@ -1235,287 +1259,196 @@ with tab2:
             - 🔵 ≥ 40%
             """)
 
-        st.markdown("---")
-        st.subheader("📊 Relatório de Desempenho por SKU")
+    st.markdown("---")
+    st.subheader("📊 Análise de Desempenho Mensal")
+
+    if not filtered_sku_df.empty:
+        # Seletor de visualização: SKU ou Código (ID do Anúncio)
+        col_vis1, col_vis2 = st.columns([1, 3])
         
-        # Seletor de intervalo de tempo
-        col_time1, col_time2 = st.columns([1, 3])
-        
-        with col_time1:
-            time_interval = st.selectbox(
-                "Intervalo de tempo:",
-                ["Mensal", "7 dias", "15 dias"],
-                key="time_interval_report"
+        with col_vis1:
+            view_by = st.selectbox(
+                "Visualizar por:",
+                ["SKU", "ID do Anúncio (Código)"],
+                key="view_by_selector"
             )
         
-        with col_time2:
+        with col_vis2:
             st.write("")  # Espaçamento
         
-        if not filtered_sku_df.empty:
-            # Função para agrupar dados baseado no intervalo selecionado
-            def get_time_grouping(df, interval):
-                if interval == "Mensal":
-                    return df['Data'].dt.to_period('M')
-                elif interval == "7 dias":
-                    # Agrupar por semanas (7 dias)
-                    return df['Data'].dt.to_period('W')
-                elif interval == "15 dias":
-                    # Agrupar por quinzenas
-                    return (df['Data'] - df['Data'].min()).dt.days // 15
+        # Definir coluna de agrupamento baseada na seleção
+        group_column = 'SKU' if view_by == "SKU" else 'Código'
+        
+        # Verificar se a coluna existe
+        if group_column not in filtered_sku_df.columns:
+            st.error(f"Coluna '{group_column}' não encontrada no dataset.")
+            st.info(f"Colunas disponíveis: {list(filtered_sku_df.columns)}")
+        else:
+            # Preparar dados mensais
+            filtered_sku_df_analysis = filtered_sku_df.copy()
+            filtered_sku_df_analysis['Mes_Ano'] = filtered_sku_df_analysis['Data'].dt.to_period('M')
             
-            def get_time_label(interval):
-                if interval == "Mensal":
-                    return "Mês"
-                elif interval == "7 dias":
-                    return "Semana"
-                elif interval == "15 dias":
-                    return "Quinzena"
+            # Agrupar por mês e SKU/Código
+            monthly_performance = filtered_sku_df_analysis.groupby([
+                'Mes_Ano', group_column, 'Descrição do Produto'
+            ]).agg({
+                'ID da venda': 'count',  # Quantidade de vendas
+                'Faturamento': 'sum'
+            }).reset_index()
             
-            # Preparar dados para o relatório
-            time_group = get_time_grouping(filtered_sku_df, time_interval)
-            time_label = get_time_label(time_interval)
+            monthly_performance.columns = ['Mes_Ano', group_column, 'Descrição do Produto', 'Qtd', 'Faturamento']
             
-            # Criar agrupamento temporal
-            if time_interval == "15 dias":
-                # Para quinzenas, precisamos de lógica especial
-                filtered_sku_df_temp = filtered_sku_df.copy()
-                filtered_sku_df_temp['Quinzena'] = (filtered_sku_df_temp['Data'] - filtered_sku_df_temp['Data'].min()).dt.days // 15
-                filtered_sku_df_temp['Quinzena_Label'] = filtered_sku_df_temp['Quinzena'].apply(
-                    lambda x: f"Q{x+1} ({(filtered_sku_df_temp['Data'].min() + pd.Timedelta(days=x*15)).strftime('%d/%m')} - {(filtered_sku_df_temp['Data'].min() + pd.Timedelta(days=(x+1)*15-1)).strftime('%d/%m')})"
-                )
-                
-                sku_performance = filtered_sku_df_temp.groupby(['SKU', 'Descrição do Produto', 'Quinzena_Label']).agg({
-                    'ID da venda': 'count',  # Quantidade de vendas
-                    'Faturamento': 'sum',    # Faturamento total
-                    'Valor Unit.': 'mean',   # Faturamento unitário (preço médio)
-                    'Margem Contrib. (=)': ['sum', 'mean']  # Margem total e unitária
-                }).reset_index()
-                
-                # Achatar colunas multi-nível
-                sku_performance.columns = ['SKU', 'Descrição do Produto', time_label, 'Qtd_Vendas', 'Fat_Total', 'Fat_Unitario', 'MC_Total', 'MC_Unitaria']
-                
-            else:
-                # Para mensal e semanal
-                filtered_sku_df_temp = filtered_sku_df.copy()
-                filtered_sku_df_temp['Periodo'] = time_group
-                if time_interval == "Mensal":
-                    filtered_sku_df_temp['Periodo_Label'] = filtered_sku_df_temp['Periodo'].dt.strftime('%b %Y')
-                else:  # 7 dias
-                    filtered_sku_df_temp['Periodo_Label'] = filtered_sku_df_temp['Periodo'].astype(str)
-                
-                sku_performance = filtered_sku_df_temp.groupby(['SKU', 'Descrição do Produto', 'Periodo_Label']).agg({
-                    'ID da venda': 'count',  # Quantidade de vendas
-                    'Faturamento': 'sum',    # Faturamento total
-                    'Valor Unit.': 'mean',   # Faturamento unitário (preço médio)
-                    'Margem Contrib. (=)': ['sum', 'mean']  # Margem total e unitária
-                }).reset_index()
-                
-                # Achatar colunas multi-nível
-                sku_performance.columns = ['SKU', 'Descrição do Produto', time_label, 'Qtd_Vendas', 'Fat_Total', 'Fat_Unitario', 'MC_Total', 'MC_Unitaria']
+            # Ordenar por período
+            monthly_performance = monthly_performance.sort_values(['Mes_Ano', group_column])
             
-            # Calcular MC em %
-            sku_performance['MC_Perc'] = np.where(
-                sku_performance['Fat_Total'] > 0,
-                (sku_performance['MC_Total'] / sku_performance['Fat_Total']) * 100,
+            # Calcular variação percentual em relação ao mês anterior
+            monthly_performance['Mes_Ano_Str'] = monthly_performance['Mes_Ano'].dt.strftime('%b/%Y')
+            monthly_performance['Qtd_Anterior'] = monthly_performance.groupby(group_column)['Qtd'].shift(1)
+            monthly_performance['Fat_Anterior'] = monthly_performance.groupby(group_column)['Faturamento'].shift(1)
+            
+            monthly_performance['Var_Qtd'] = np.where(
+                monthly_performance['Qtd_Anterior'] > 0,
+                ((monthly_performance['Qtd'] - monthly_performance['Qtd_Anterior']) / monthly_performance['Qtd_Anterior'] * 100),
                 0
             )
             
-            # CRIAR TABELA UNIFICADA
-            if not sku_performance.empty:
-                # Obter lista única de SKUs e períodos
-                skus_unique = sku_performance[['SKU', 'Descrição do Produto']].drop_duplicates()
-                periods = sorted(sku_performance[time_label].unique())
-                
-                # Criar estrutura da tabela unificada
-                unified_table = []
-                
-                for _, sku_row in skus_unique.iterrows():
-                    sku = sku_row['SKU']
-                    desc = sku_row['Descrição do Produto']
-                    
-                    # Obter dados do SKU para todos os períodos
-                    sku_data = sku_performance[
-                        (sku_performance['SKU'] == sku) & 
-                        (sku_performance['Descrição do Produto'] == desc)
-                    ].set_index(time_label)
-                    
-                    # Criar linha da tabela unificada
-                    row = {'SKU': sku, 'Descrição do Produto': desc}
-                    
-                    # Adicionar métricas para cada período
-                    for i, period in enumerate(periods):
-                        if period in sku_data.index:
-                            period_data = sku_data.loc[period]
-                            
-                            # Métricas do período atual
-                            row[f'{period}_Qtd'] = period_data['Qtd_Vendas']
-                            row[f'{period}_Fat'] = period_data['Fat_Total']
-                            row[f'{period}_Fat_Unit'] = period_data['Fat_Unitario']
-                            row[f'{period}_MC_Unit'] = period_data['MC_Unitaria']
-                            row[f'{period}_MC%'] = period_data['MC_Perc']
-                            
-                            # Calcular variações em relação ao período anterior
-                            if i > 0:
-                                prev_period = periods[i-1]
-                                if prev_period in sku_data.index:
-                                    prev_data = sku_data.loc[prev_period]
-                                    
-                                    # Variação Quantidade
-                                    if prev_data['Qtd_Vendas'] > 0:
-                                        row[f'{period}_Var_Qtd%'] = ((period_data['Qtd_Vendas'] - prev_data['Qtd_Vendas']) / prev_data['Qtd_Vendas'] * 100)
-                                    else:
-                                        row[f'{period}_Var_Qtd%'] = 0
-                                    
-                                    # Variação Faturamento
-                                    if prev_data['Fat_Total'] > 0:
-                                        row[f'{period}_Var_Fat%'] = ((period_data['Fat_Total'] - prev_data['Fat_Total']) / prev_data['Fat_Total'] * 100)
-                                    else:
-                                        row[f'{period}_Var_Fat%'] = 0
-                                    
-                                    # Variação MC Unitária
-                                    if prev_data['MC_Unitaria'] != 0:
-                                        row[f'{period}_Var_MC%'] = ((period_data['MC_Unitaria'] - prev_data['MC_Unitaria']) / abs(prev_data['MC_Unitaria']) * 100)
-                                    else:
-                                        row[f'{period}_Var_MC%'] = 0
-                                else:
-                                    row[f'{period}_Var_Qtd%'] = 0
-                                    row[f'{period}_Var_Fat%'] = 0
-                                    row[f'{period}_Var_MC%'] = 0
-                            else:
-                                # Primeiro período não tem variação
-                                row[f'{period}_Var_Qtd%'] = 0
-                                row[f'{period}_Var_Fat%'] = 0
-                                row[f'{period}_Var_MC%'] = 0
-                        else:
-                            # Período sem dados
-                            row[f'{period}_Qtd'] = 0
-                            row[f'{period}_Fat'] = 0
-                            row[f'{period}_Fat_Unit'] = 0
-                            row[f'{period}_MC_Unit'] = 0
-                            row[f'{period}_MC%'] = 0
-                            row[f'{period}_Var_Qtd%'] = 0
-                            row[f'{period}_Var_Fat%'] = 0
-                            row[f'{period}_Var_MC%'] = 0
-                    
-                    unified_table.append(row)
-                
-                # Converter para DataFrame
-                unified_df = pd.DataFrame(unified_table)
-                
-                # Reordenar colunas para melhor visualização
-                base_cols = ['SKU', 'Descrição do Produto']
-                metric_cols = []
-                
-                for period in periods:
-                    metric_cols.extend([
-                        f'{period}_Qtd',
-                        f'{period}_Var_Qtd%',
-                        f'{period}_Fat',
-                        f'{period}_Var_Fat%',
-                        f'{period}_Fat_Unit',
-                        f'{period}_MC_Unit',
-                        f'{period}_Var_MC%',
-                        f'{period}_MC%'
-                    ])
-                
-                final_cols = base_cols + metric_cols
-                unified_df = unified_df[final_cols]
-                
-                # Criar dicionário de formatação
-                format_dict = {}
-                
-                for period in periods:
-                    format_dict[f'{period}_Qtd'] = '{:,.0f}'
-                    format_dict[f'{period}_Fat'] = 'R$ {:,.2f}'
-                    format_dict[f'{period}_Fat_Unit'] = 'R$ {:,.2f}'
-                    format_dict[f'{period}_MC_Unit'] = 'R$ {:,.2f}'
-                    format_dict[f'{period}_MC%'] = '{:.1f}%'
-                    format_dict[f'{period}_Var_Qtd%'] = '{:+.1f}%'
-                    format_dict[f'{period}_Var_Fat%'] = '{:+.1f}%'
-                    format_dict[f'{period}_Var_MC%'] = '{:+.1f}%'
-                
-                # Função para colorir variações
-                def color_variations(val, col_name):
-                    if 'Var_' in col_name and col_name.endswith('%'):
-                        if pd.isna(val) or val == 0:
-                            return ''
-                        if val > 0:
-                            return 'color: green'
-                        elif val < 0:
-                            return 'color: red'
-                    return ''
-                
-                # Aplicar formatação e estilo
-                styled_df = unified_df.style.format(format_dict)
-                
-                # Aplicar cores nas variações
-                for col in unified_df.columns:
-                    if 'Var_' in col and col.endswith('%'):
-                        styled_df = styled_df.applymap(lambda x: color_variations(x, col), subset=[col])
-                
-                st.write("**Relatório Unificado de Performance por SKU**")
-                st.write(f"*Métricas: Qtd = Quantidade de Vendas | Fat = Faturamento Total | Fat_Unit = Faturamento Unitário | MC_Unit = Margem de Contribuição Unitária | MC% = Margem de Contribuição % | Var_% = Variação Percentual*")
-                
-                st.dataframe(styled_df, use_container_width=True, height=400)
-                
-                # Opção para download
-                csv = unified_df.to_csv(index=False, encoding='utf-8-sig')
-                st.download_button(
-                    label="📥 Download Relatório (CSV)",
-                    data=csv,
-                    file_name=f"relatorio_performance_sku_{time_interval.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime='text/csv'
-                )
-        else:
-            st.info("Nenhum SKU selecionado ou dados não encontrados.")
-
-        st.markdown("---")    
-        
-        st.subheader("📈 Top SKUs por Mês")
-
-        if not filtered_df.empty:
-            mensal_sku = filtered_df.groupby([filtered_df['Data'].dt.to_period('M'), 'SKU']).agg({
-                'Descrição do Produto': 'first',  # Adicionar esta linha
-                'Faturamento': 'sum',
-                'Qtd.': 'sum'
-            }).reset_index()
-            mensal_sku['Mês'] = mensal_sku['Data'].dt.strftime('%b %Y')
-
-            # Criar coluna combinada para exibição
-            # Converter SKU para string e criar coluna combinada
-            # Converter para string e tratar valores nulos
-            mensal_sku['SKU'] = mensal_sku['SKU'].astype(str)
-            mensal_sku['Descrição do Produto'] = mensal_sku['Descrição do Produto'].fillna('Sem descrição').astype(str)
-
-            # Criar coluna combinada com tratamento de tamanho
-            mensal_sku['SKU_Desc'] = mensal_sku.apply(
-                lambda row: f"{row['SKU']} - {row['Descrição do Produto'][:30]}{'...' if len(row['Descrição do Produto']) > 30 else ''}", 
+            monthly_performance['Var_Fat'] = np.where(
+                monthly_performance['Fat_Anterior'] > 0,
+                ((monthly_performance['Faturamento'] - monthly_performance['Fat_Anterior']) / monthly_performance['Fat_Anterior'] * 100),
+                0
+            )
+            
+            # Criar identificador único
+            monthly_performance['Identificador'] = monthly_performance.apply(
+                lambda row: f"{row[group_column]} - {row['Descrição do Produto'][:50]}{'...' if len(row['Descrição do Produto']) > 50 else ''}", 
                 axis=1
             )
-            if not mensal_sku.empty:
-                top_rev = mensal_sku.nlargest(20, 'Faturamento')
-                top_qtd = mensal_sku.nlargest(20, 'Qtd.')
-
+            
+            # CRIAR TABELA PIVOTADA
+            unique_items = monthly_performance['Identificador'].unique()
+            unique_months = sorted(monthly_performance['Mes_Ano'].unique())
+            
+            # Estrutura da tabela
+            pivot_data = []
+            
+            for item in unique_items:
+                item_data = monthly_performance[monthly_performance['Identificador'] == item]
+                row = {'Identificador': item}
+                
+                for month in unique_months:
+                    month_str = month.strftime('%b/%Y')
+                    month_data = item_data[item_data['Mes_Ano'] == month]
+                    
+                    if not month_data.empty:
+                        qtd = month_data['Qtd'].values[0]
+                        fat = month_data['Faturamento'].values[0]
+                        var_qtd = month_data['Var_Qtd'].values[0]
+                        var_fat = month_data['Var_Fat'].values[0]
+                        
+                        row[f'{month_str}_Qtd'] = qtd
+                        row[f'{month_str}_Fat'] = fat
+                        row[f'{month_str}_Var_Qtd'] = var_qtd
+                        row[f'{month_str}_Var_Fat'] = var_fat
+                    else:
+                        row[f'{month_str}_Qtd'] = 0
+                        row[f'{month_str}_Fat'] = 0
+                        row[f'{month_str}_Var_Qtd'] = 0
+                        row[f'{month_str}_Var_Fat'] = 0
+                
+                pivot_data.append(row)
+            
+            pivot_df = pd.DataFrame(pivot_data)
+            
+            # Reordenar colunas
+            base_cols = ['Identificador']
+            month_cols = []
+            for month in unique_months:
+                month_str = month.strftime('%b/%Y')
+                month_cols.extend([
+                    f'{month_str}_Qtd',
+                    f'{month_str}_Fat',
+                    f'{month_str}_Var_Qtd',
+                    f'{month_str}_Var_Fat'
+                ])
+            
+            final_cols = base_cols + month_cols
+            pivot_df = pivot_df[final_cols]
+            
+            # Renomear colunas para melhor visualização
+            rename_dict = {'Identificador': 'Identificador'}
+            for month in unique_months:
+                month_str = month.strftime('%b/%Y')
+                rename_dict[f'{month_str}_Qtd'] = f'{month_str}_Qtd'
+                rename_dict[f'{month_str}_Fat'] = f'{month_str}_R$'
+                rename_dict[f'{month_str}_Var_Qtd'] = f'{month_str}_Var%Qtd'
+                rename_dict[f'{month_str}_Var_Fat'] = f'{month_str}_Var%Fat'
+            
+            pivot_df = pivot_df.rename(columns=rename_dict)
+            
+            # Função para colorir variações
+            def color_variation_cell(val):
+                if pd.isna(val) or val == 0:
+                    return ''
+                elif val > 0:
+                    return 'background-color: #90EE90; color: #006400; font-weight: bold'
+                else:
+                    return 'background-color: #FFB6C1; color: #8B0000; font-weight: bold'
+            
+            # Criar formatação
+            format_dict = {}
+            for col in pivot_df.columns:
+                if '_Qtd' in col:
+                    format_dict[col] = '{:,.0f}'
+                elif '_R$' in col:
+                    format_dict[col] = 'R$ {:,.2f}'
+                elif 'Var%' in col:
+                    format_dict[col] = '{:+.1f}%'
+            
+            # Aplicar estilo
+            styled_pivot = pivot_df.style.format(format_dict)
+            
+            # Aplicar cores nas colunas de variação
+            for col in pivot_df.columns:
+                if 'Var%' in col:
+                    styled_pivot = styled_pivot.applymap(color_variation_cell, subset=[col])
+            
+            st.dataframe(styled_pivot, use_container_width=True, height=500)
+            
+            # Filtrar dados com variação (excluir primeiro registro de cada item)
+            trend_data = monthly_performance[monthly_performance['Qtd_Anterior'].notna()].copy()
+            
+            if not trend_data.empty and len(trend_data) > 0:              
+                # Gráficos de evolução absoluta
+                st.markdown("---")
+                
                 col1, col2 = st.columns(2)
-
+                
                 with col1:
-                    fig_rev = px.bar(top_rev, x='Faturamento', y='SKU_Desc', color='Mês', orientation='h',  # Alterar 'SKU' para 'SKU_Desc'
-                                    title='Top 20 SKUs por Faturamento (Mensal)',
-                                    labels={'Faturamento': 'Faturamento (R$)', 'SKU_Desc': 'SKU - Descrição'})
-                    fig_rev.update_layout(height=800)
-                    st.plotly_chart(fig_rev, use_container_width=True)
-
+                    fig_abs_qtd = px.line(
+                        monthly_performance,
+                        x='Mes_Ano_Str',
+                        y='Qtd',
+                        color='Identificador',
+                        markers=True,
+                        title='Evolução (Qtd.)',
+                        labels={'Mes_Ano_Str': 'Mês', 'Qtd': 'Quantidade de Vendas'},
+                        height=400
+                    )
+                    st.plotly_chart(fig_abs_qtd, use_container_width=True)
+                
                 with col2:
-                    fig_qtd = px.bar(top_qtd, x='Qtd.', y='SKU_Desc', color='Mês', orientation='h',  # Alterar 'SKU' para 'SKU_Desc'
-                                    title='Top 20 SKUs por Quantidade (Mensal)',
-                                    labels={'Qtd.': 'Quantidade', 'SKU_Desc': 'SKU - Descrição'})
-                    fig_qtd.update_layout(height=800)
-                    st.plotly_chart(fig_qtd, use_container_width=True)
-            else:
-                st.info("Nenhum dado encontrado para o período selecionado.")
-        else:
-            st.info("Nenhum dado encontrado para o período selecionado.")
-
+                    fig_abs_fat = px.line(
+                        monthly_performance,
+                        x='Mes_Ano_Str',
+                        y='Faturamento',
+                        color='Identificador',
+                        markers=True,
+                        title='Evolução (R$)',
+                        labels={'Mes_Ano_Str': 'Mês', 'Faturamento': 'Faturamento (R$)'},
+                        height=400
+                    )
+                    st.plotly_chart(fig_abs_fat, use_container_width=True)
+            
 with tab3:
     st.subheader("Canal de Envio")
     
