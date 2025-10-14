@@ -1287,7 +1287,7 @@ with tab2:
             # Preparar dados mensais
             filtered_sku_df_analysis = filtered_sku_df.copy()
             filtered_sku_df_analysis['Mes_Ano'] = filtered_sku_df_analysis['Data'].dt.to_period('M')
-            
+
             # Agrupar por mês e SKU/Código
             monthly_performance = filtered_sku_df_analysis.groupby([
                 'Mes_Ano', group_column, 'Descrição do Produto'
@@ -1295,124 +1295,140 @@ with tab2:
                 'ID da venda': 'count',  # Quantidade de vendas
                 'Faturamento': 'sum'
             }).reset_index()
-            
+
             monthly_performance.columns = ['Mes_Ano', group_column, 'Descrição do Produto', 'Qtd', 'Faturamento']
-            
-            # Ordenar por período
+
+            # Ordenar por período CRONOLOGICAMENTE
             monthly_performance = monthly_performance.sort_values(['Mes_Ano', group_column])
-            
-            # Calcular variação percentual em relação ao mês anterior
-            monthly_performance['Mes_Ano_Str'] = monthly_performance['Mes_Ano'].dt.strftime('%b/%Y')
-            monthly_performance['Qtd_Anterior'] = monthly_performance.groupby(group_column)['Qtd'].shift(1)
-            monthly_performance['Fat_Anterior'] = monthly_performance.groupby(group_column)['Faturamento'].shift(1)
-            
-            monthly_performance['Var_Qtd'] = np.where(
-                monthly_performance['Qtd_Anterior'] > 0,
-                ((monthly_performance['Qtd'] - monthly_performance['Qtd_Anterior']) / monthly_performance['Qtd_Anterior'] * 100),
-                0
+
+            # CRIAR IDENTIFICADOR AQUI (ANTES DE USAR)
+            monthly_performance['Identificador'] = monthly_performance.apply(
+                lambda row: f"{row[group_column]} - {row['Descrição do Produto'][:50]}{'...' if len(row['Descrição do Produto']) > 50 else ''}", 
+                axis=1
             )
-            
+
+            # Criar string de mês MANTENDO a ordenação cronológica
+            monthly_performance['Mes_Ano_Str'] = monthly_performance['Mes_Ano'].dt.strftime('%b/%Y')
+
+            # Calcular variação percentual em relação ao mês anterior DENTRO DE CADA GRUPO
+            monthly_performance = monthly_performance.sort_values(['Identificador', 'Mes_Ano'])
+
+            monthly_performance['Qtd_Anterior'] = monthly_performance.groupby('Identificador')['Qtd'].shift(1)
+            monthly_performance['Fat_Anterior'] = monthly_performance.groupby('Identificador')['Faturamento'].shift(1)
+
+            monthly_performance['Var_Qtd'] = np.where(
+                monthly_performance['Qtd_Anterior'] > 0,  # ← Aqui está o problema!
+                ((monthly_performance['Qtd'] - monthly_performance['Qtd_Anterior']) / monthly_performance['Qtd_Anterior'] * 100),
+                0  # ← Retorna 0 quando não há venda anterior
+            )
+
             monthly_performance['Var_Fat'] = np.where(
                 monthly_performance['Fat_Anterior'] > 0,
                 ((monthly_performance['Faturamento'] - monthly_performance['Fat_Anterior']) / monthly_performance['Fat_Anterior'] * 100),
                 0
             )
-            
-            # Criar identificador único
-            monthly_performance['Identificador'] = monthly_performance.apply(
-                lambda row: f"{row[group_column]} - {row['Descrição do Produto'][:50]}{'...' if len(row['Descrição do Produto']) > 50 else ''}", 
-                axis=1
-            )
-            
-            # CRIAR TABELA PIVOTADA
-            unique_items = monthly_performance['Identificador'].unique()
-            unique_months = sorted(monthly_performance['Mes_Ano'].unique())
-            
-            # Estrutura da tabela
-            pivot_data = []
-            
-            for item in unique_items:
-                item_data = monthly_performance[monthly_performance['Identificador'] == item]
-                row = {'Identificador': item}
+
+
+            # CRIAR TABELA PIVOTADA COM MULTIINDEX (como no relatório Diário)
+            if not monthly_performance.empty:
+                # Obter lista ordenada de meses (cronologicamente)
+                meses_ordenados = monthly_performance.sort_values('Mes_Ano')['Mes_Ano_Str'].unique().tolist()
                 
-                for month in unique_months:
-                    month_str = month.strftime('%b/%Y')
-                    month_data = item_data[item_data['Mes_Ano'] == month]
+                # Preparar dados no formato longo para pivot
+                data_for_pivot = []
+                
+                for _, row in monthly_performance.iterrows():
+                    mes = row['Mes_Ano_Str']
+                    identificador = row['Identificador']
                     
-                    if not month_data.empty:
-                        qtd = month_data['Qtd'].values[0]
-                        fat = month_data['Faturamento'].values[0]
-                        var_qtd = month_data['Var_Qtd'].values[0]
-                        var_fat = month_data['Var_Fat'].values[0]
-                        
-                        row[f'{month_str}_Qtd'] = qtd
-                        row[f'{month_str}_Fat'] = fat
-                        row[f'{month_str}_Var_Qtd'] = var_qtd
-                        row[f'{month_str}_Var_Fat'] = var_fat
-                    else:
-                        row[f'{month_str}_Qtd'] = 0
-                        row[f'{month_str}_Fat'] = 0
-                        row[f'{month_str}_Var_Qtd'] = 0
-                        row[f'{month_str}_Var_Fat'] = 0
+                    # Adicionar linha para Qtd
+                    data_for_pivot.append({
+                        'Identificador': identificador,
+                        'Mes': mes,
+                        'Metrica': 'Qtd',
+                        'Valor': row['Qtd']
+                    })
+                    
+                    # Adicionar linha para R$
+                    data_for_pivot.append({
+                        'Identificador': identificador,
+                        'Mes': mes,
+                        'Metrica': 'R$',
+                        'Valor': row['Faturamento']
+                    })
+                    
+                    # Adicionar linha para Var%Qtd
+                    data_for_pivot.append({
+                        'Identificador': identificador,
+                        'Mes': mes,
+                        'Metrica': 'Var%Qtd',
+                        'Valor': row['Var_Qtd']
+                    })
+                    
+                    # Adicionar linha para Var%Fat
+                    data_for_pivot.append({
+                        'Identificador': identificador,
+                        'Mes': mes,
+                        'Metrica': 'Var%Fat',
+                        'Valor': row['Var_Fat']
+                    })
                 
-                pivot_data.append(row)
-            
-            pivot_df = pd.DataFrame(pivot_data)
-            
-            # Reordenar colunas
-            base_cols = ['Identificador']
-            month_cols = []
-            for month in unique_months:
-                month_str = month.strftime('%b/%Y')
-                month_cols.extend([
-                    f'{month_str}_Qtd',
-                    f'{month_str}_Fat',
-                    f'{month_str}_Var_Qtd',
-                    f'{month_str}_Var_Fat'
-                ])
-            
-            final_cols = base_cols + month_cols
-            pivot_df = pivot_df[final_cols]
-            
-            # Renomear colunas para melhor visualização
-            rename_dict = {'Identificador': 'Identificador'}
-            for month in unique_months:
-                month_str = month.strftime('%b/%Y')
-                rename_dict[f'{month_str}_Qtd'] = f'{month_str}_Qtd'
-                rename_dict[f'{month_str}_Fat'] = f'{month_str}_R$'
-                rename_dict[f'{month_str}_Var_Qtd'] = f'{month_str}_Var%Qtd'
-                rename_dict[f'{month_str}_Var_Fat'] = f'{month_str}_Var%Fat'
-            
-            pivot_df = pivot_df.rename(columns=rename_dict)
-            
-            # Função para colorir variações
-            def color_variation_cell(val):
-                if pd.isna(val) or val == 0:
-                    return ''
-                elif val > 0:
-                    return 'background-color: #90EE90; color: #006400; font-weight: bold'
-                else:
-                    return 'background-color: #FFB6C1; color: #8B0000; font-weight: bold'
-            
-            # Criar formatação
-            format_dict = {}
-            for col in pivot_df.columns:
-                if '_Qtd' in col:
-                    format_dict[col] = '{:,.0f}'
-                elif '_R$' in col:
-                    format_dict[col] = 'R$ {:,.2f}'
-                elif 'Var%' in col:
-                    format_dict[col] = '{:+.1f}%'
-            
-            # Aplicar estilo
-            styled_pivot = pivot_df.style.format(format_dict)
-            
-            # Aplicar cores nas colunas de variação
-            for col in pivot_df.columns:
-                if 'Var%' in col:
-                    styled_pivot = styled_pivot.applymap(color_variation_cell, subset=[col])
-            
-            st.dataframe(styled_pivot, use_container_width=True, height=500)
+                df_long = pd.DataFrame(data_for_pivot)
+                
+                # Converter 'Mes' para Categorical com ordem específica (cronológica)
+                df_long['Mes'] = pd.Categorical(df_long['Mes'], categories=meses_ordenados, ordered=True)
+                
+                # Criar pivot table com MultiIndex
+                pivot_table = df_long.pivot_table(
+                    index='Identificador',
+                    columns=['Mes', 'Metrica'],
+                    values='Valor',
+                    fill_value=0,
+                    aggfunc='sum',
+                    sort=False  # Não reordenar alfabeticamente
+                )
+                
+                # Reordenar colunas explicitamente na ordem cronológica
+                ordered_columns = []
+                for mes in meses_ordenados:
+                    for metrica in ['Qtd', 'R$', 'Var%Qtd', 'Var%Fat']:
+                        if (mes, metrica) in pivot_table.columns:
+                            ordered_columns.append((mes, metrica))
+                
+                pivot_table = pivot_table[ordered_columns]
+                
+                # Função para colorir variações
+                def color_variation(val):
+                    if pd.isna(val) or val == 0:
+                        return ''
+                    elif val > 0:
+                        return 'background-color: #90EE90; color: #006400; font-weight: bold'
+                    else:
+                        return 'background-color: #FFB6C1; color: #8B0000; font-weight: bold'
+                
+                # Criar dicionário de formatação
+                format_dict = {}
+                for col in pivot_table.columns:
+                    mes, metrica = col
+                    if metrica == 'Qtd':
+                        format_dict[col] = '{:,.0f}'
+                    elif metrica == 'R$':
+                        format_dict[col] = 'R$ {:,.2f}'
+                    elif metrica in ['Var%Qtd', 'Var%Fat']:
+                        format_dict[col] = '{:+.1f}%'
+                
+                # Aplicar estilo
+                styled_table = pivot_table.style.format(format_dict)
+                
+                # Aplicar cores nas colunas de variação
+                for col in pivot_table.columns:
+                    mes, metrica = col
+                    if metrica in ['Var%Qtd', 'Var%Fat']:
+                        styled_table = styled_table.applymap(color_variation, subset=[col])
+                
+                st.dataframe(styled_table, use_container_width=True, height=500)
+            else:
+                st.info("Nenhum dado encontrado para o relatório de desempenho mensal.")
             
             # Filtrar dados com variação (excluir primeiro registro de cada item)
             trend_data = monthly_performance[monthly_performance['Qtd_Anterior'].notna()].copy()
