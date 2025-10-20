@@ -1252,7 +1252,7 @@ with tab2:
             st.info("Nenhum dado encontrado para o período selecionado.")
 
         st.markdown("""
-            **Legenda:**
+            **Legenda MC (%):**
             - 🔴 ≤ 20%
             - 🟡 > 20% e < 30%
             - 🟢 ≥ 30% e < 40%
@@ -1260,7 +1260,7 @@ with tab2:
             """)
 
     st.markdown("---")
-    st.subheader("📊 Análise de Desempenho Mensal")
+    st.subheader("Evolução Mensal")
 
     if not filtered_sku_df.empty:
         # Seletor de visualização: SKU ou Código (ID do Anúncio)
@@ -1464,6 +1464,181 @@ with tab2:
                         height=400
                     )
                     st.plotly_chart(fig_abs_fat, use_container_width=True)
+            
+            st.markdown("---")
+    st.subheader("Variação de Preço")
+    
+    if not filtered_sku_df.empty:        
+        # Preparar dados mensais com preços e margens médias
+        pricing_monthly = filtered_sku_df.groupby([
+            filtered_sku_df['Data'].dt.to_period('M'), 'SKU', 'Descrição do Produto'
+        ]).agg({
+            'Valor Unit.': 'mean',  # Preço médio unitário
+            'Margem Contrib. (=)': 'sum',  # Margem total
+            'Qtd.': 'sum',  # Quantidade total
+            'Faturamento': 'sum'  # Faturamento total
+        }).reset_index()
+        
+        # Calcular margem unitária
+        pricing_monthly['MC Unitária (R$)'] = pricing_monthly['Margem Contrib. (=)'] / pricing_monthly['Qtd.']
+        pricing_monthly['MC Unitária (%)'] = (pricing_monthly['Margem Contrib. (=)'] / pricing_monthly['Faturamento'] * 100)
+        
+        # Criar identificador e formatar mês
+        pricing_monthly['Identificador'] = pricing_monthly.apply(
+            lambda row: f"{row['SKU']} - {row['Descrição do Produto'][:50]}{'...' if len(row['Descrição do Produto']) > 50 else ''}", 
+            axis=1
+        )
+        pricing_monthly['Mes_Str'] = pricing_monthly['Data'].dt.strftime('%b/%Y')
+        
+        # Ordenar cronologicamente
+        pricing_monthly = pricing_monthly.sort_values('Data')
+        meses_ordenados = pricing_monthly['Mes_Str'].unique().tolist()
+        
+        if not pricing_monthly.empty:
+            # GRÁFICOS DE LINHA - Evolução temporal            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                fig_preco = px.line(
+                    pricing_monthly,
+                    x='Mes_Str',
+                    y='Valor Unit.',
+                    color='Identificador',
+                    markers=True,
+                    title='Preço Unitário (R$)',
+                    labels={'Mes_Str': 'Mês', 'Valor Unit.': 'Preço (R$)'},
+                    height=400,
+                    category_orders={'Mes_Str': meses_ordenados}  # ← ADICIONADO
+                )
+                st.plotly_chart(fig_preco, use_container_width=True)
+            
+            with col2:
+                fig_mc_rs = px.line(
+                    pricing_monthly,
+                    x='Mes_Str',
+                    y='MC Unitária (R$)',
+                    color='Identificador',
+                    markers=True,
+                    title='Margem de Contribuição Unitária (R$)',
+                    labels={'Mes_Str': 'Mês', 'MC Unitária (R$)': 'MC (R$)'},
+                    height=400,
+                    category_orders={'Mes_Str': meses_ordenados}  # ← ADICIONADO
+                )
+                st.plotly_chart(fig_mc_rs, use_container_width=True)
+            
+            with col3:
+                fig_mc_perc = px.line(
+                    pricing_monthly,
+                    x='Mes_Str',
+                    y='MC Unitária (%)',
+                    color='Identificador',
+                    markers=True,
+                    title='Margem de Contribuição Unitária (%)',
+                    labels={'Mes_Str': 'Mês', 'MC Unitária (%)': 'MC (%)'},
+                    height=400,
+                    category_orders={'Mes_Str': meses_ordenados}  # ← ADICIONADO
+                )
+                st.plotly_chart(fig_mc_perc, use_container_width=True)
+            
+            st.markdown("---")
+            
+            # TABELA PIVOTADA
+            st.markdown("#### Tabela")
+            
+            # Preparar dados para pivot
+            pricing_pivot_data = []
+            
+            for _, row in pricing_monthly.iterrows():
+                mes = row['Mes_Str']
+                identificador = row['Identificador']
+                
+                # Preço Unitário
+                pricing_pivot_data.append({
+                    'Identificador': identificador,
+                    'Mes': mes,
+                    'Metrica': 'Preço (R$)',
+                    'Valor': row['Valor Unit.']
+                })
+                
+                # MC Unitária (R$)
+                pricing_pivot_data.append({
+                    'Identificador': identificador,
+                    'Mes': mes,
+                    'Metrica': 'MC (R$)',
+                    'Valor': row['MC Unitária (R$)']
+                })
+                
+                # MC Unitária (%)
+                pricing_pivot_data.append({
+                    'Identificador': identificador,
+                    'Mes': mes,
+                    'Metrica': 'MC (%)',
+                    'Valor': row['MC Unitária (%)']
+                })
+            
+            df_pricing_long = pd.DataFrame(pricing_pivot_data)
+            
+            # Converter mes para categorical
+            df_pricing_long['Mes'] = pd.Categorical(df_pricing_long['Mes'], categories=meses_ordenados, ordered=True)
+            
+            # Criar pivot
+            pricing_pivot = df_pricing_long.pivot_table(
+                index='Identificador',
+                columns=['Mes', 'Metrica'],
+                values='Valor',
+                fill_value=0,
+                aggfunc='sum',
+                sort=False
+            )
+            
+            # Reordenar colunas
+            ordered_cols = []
+            for mes in meses_ordenados:
+                for metrica in ['Preço (R$)', 'MC (R$)', 'MC (%)']:
+                    if (mes, metrica) in pricing_pivot.columns:
+                        ordered_cols.append((mes, metrica))
+            
+            pricing_pivot = pricing_pivot[ordered_cols]
+            
+            # Formatação
+            format_dict = {}
+            for col in pricing_pivot.columns:
+                mes, metrica = col
+                if 'MC (%)' in metrica:
+                    format_dict[col] = '{:.1f}%'
+                else:
+                    format_dict[col] = 'R$ {:,.2f}'
+            
+            # Colorir MC (%)
+            def color_mc_pricing(val):
+                if pd.isna(val) or val == 0:
+                    return ''
+                if val <= 20:
+                    return 'background-color:#FF0000; color: white'
+                elif val < 30:
+                    return 'background-color:#C7AF00; color: white'
+                elif val < 40:
+                    return 'background-color:#00C700; color: white'
+                else:
+                    return 'background-color:#00D9FF; color: white'
+            
+            styled_pricing = pricing_pivot.style.format(format_dict)
+            
+            # Aplicar cores apenas nas colunas de MC (%)
+            for col in pricing_pivot.columns:
+                mes, metrica = col
+                if 'MC (%)' in metrica:
+                    styled_pricing = styled_pricing.applymap(color_mc_pricing, subset=[col])
+            
+            st.dataframe(styled_pricing, use_container_width=True, height=500)
+            
+            st.markdown("""
+            **Legenda (%):**
+            - 🔴 ≤ 20%
+            - 🟡 > 20% e < 30%
+            - 🟢 ≥ 30% e < 40%
+            - 🔵 ≥ 40%
+            """)
             
 with tab3:
     st.subheader("Canal de Envio")
