@@ -14,7 +14,7 @@ def check_password():
     
     def password_entered():
         """Verifica se a senha inserida está correta"""
-        if hashlib.sha256(st.session_state["password"].encode()).hexdigest() == hashlib.sha256("xrack18361832".encode()).hexdigest():
+        if hashlib.sha256(st.session_state["password"].encode()).hexdigest() == hashlib.sha256("xrack1836".encode()).hexdigest():
             st.session_state["password_correct"] = True
             del st.session_state["password"]  # Remove a senha da sessão por segurança
         else:
