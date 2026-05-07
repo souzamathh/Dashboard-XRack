@@ -1212,7 +1212,13 @@ with tab2:
 
             # Filtrar apenas as colunas selecionadas mantendo a ordem original
             ordered_selected_columns = [col for col in all_columns if col in selected_columns]
-            display_resumo = resumo_sku[ordered_selected_columns]
+            display_resumo = resumo_sku[ordered_selected_columns].copy()
+
+            # Arredondar todas as colunas numéricas (exceto Qtd.) para evitar números muito longos na exportação
+            numeric_cols = display_resumo.select_dtypes(include=['float64', 'int64']).columns
+            for col in numeric_cols:
+                if col != 'Qtd.':
+                    display_resumo[col] = display_resumo[col].round(2)
 
             def color_mc(val):
                 if pd.isna(val):
@@ -1247,6 +1253,15 @@ with tab2:
 
             # Exibir tabela
             st.dataframe(styled, use_container_width=True, hide_index=True)
+
+            # Botão de exportação nativo para o Excel Brasileiro (usando vírgula como decimal e ponto-e-vírgula como separador)
+            csv_data = display_resumo.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Baixar Relatório Otimizado para Excel",
+                data=csv_data,
+                file_name="margem_contribuicao_por_sku.csv",
+                mime="text/csv"
+            )
 
         else:
             st.info("Nenhum dado encontrado para o período selecionado.")
